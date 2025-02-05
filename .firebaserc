@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "tunetok-75a32"
+  },
+  "firestore": {
+    "database": "tunetok-correct-db"
+  }
+}
