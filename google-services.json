@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "965611382832",
+    "project_id": "tunetok-75a32",
+    "storage_bucket": "tunetok-75a32.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:965611382832:android:97e8f010ddde521349a5f5",
+        "android_client_info": {
+          "package_name": "com.anonymous.TTClone"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "965611382832-8opmf9j7bcla03v8nv2k22e725imkqpm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCI1t21bbCeFGMf_MxiKY0j8LVeWayAHcc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "965611382832-8opmf9j7bcla03v8nv2k22e725imkqpm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "TuneTok",
+    "slug": "TuneTok",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "entryPoint": "./app/index.ts",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.TTClone"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7c2109db-04b2-4d7d-803f-56e409b3b048"
+      }
+    },
+    "plugins": [
+      "./app.plugin",
+      "./plugins/kotlin-jvm-target.plugin"
+    ],
+    "newArchEnabled": true
+  }
+}

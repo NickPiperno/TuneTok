@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // VideoMetadata rules
+    match /videoMetadata/{videoId} {
+      allow read: if true; // Anyone can read video metadata
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        (request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['likes', 'comments', 'shares', 'views', 'averageWatchDuration', 'completionRate', 'watchTimeDistribution', 'lastEngagementAt']));
+      allow delete: if isAuthenticated() && resource.data.artist == request.auth.uid;
+    }
+    
+    // UserPreferences rules
+    match /userPreferences/{userId} {
+      allow read: if isAuthenticated(); // Allow authenticated users to read preferences (needed for following status)
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || 
+        (isAuthenticated() && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['following']) &&
+         (request.resource.data.following.size() == resource.data.following.size() + 1 ||
+          request.resource.data.following.size() == resource.data.following.size() - 1));
+    }
+    
+    // Comments rules
+    match /comments/{commentId} {
+      allow read: if true;  // Allow anyone to read comments
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['userId', 'username', 'videoId', 'text', 'timestamp', 'commentLikes']) &&
+        request.resource.data.commentLikes == 0;
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentLikes'])
+      );
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Interactions rules
+    match /interactions/{interactionId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || 
+         resource.data.videoId in get(/databases/$(database)/documents/videoMetadata/$(resource.data.videoId)).data.artist);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // UserSessions rules
+    match /userSessions/{sessionId} {
+      allow read, write: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+    }
+  }
+}
