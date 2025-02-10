@@ -54,3 +54,20 @@ This application is being developed for Android devices only. We are not targeti
 - Content consumption focus (no content creation features)
 - Future AI integration possibilities
 - Firebase-based backend services
+
+## AI Integration Setup
+
+1. Create a `.env` file in the project root
+2. Add your OpenAI API key:
+   ```
+   OPENAI_API_KEY=your_api_key_here
+   ```
+3. Never commit the `.env` file to version control
+
+The project uses LangChain for AI operations, configured specifically for React Native compatibility.
+
+### Limitations
+
+- File system operations from LangChain are not supported in React Native
+- Only API-based features are available
+- Local model execution is not supported

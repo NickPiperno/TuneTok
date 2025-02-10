@@ -20,4 +20,14 @@ This index provides an overview of all documentation files in this project.
 - [Codebase Best Practices](codebase-best-practices.md) - Best practices for maintaining the codebase.
 - [Tech Stack Rules](tech-stack-rules.md) - Rules and guidelines regarding the technology stack.
 - [Theme Rules](theme-rules.md) - Guidelines for the project's visual theme.
-- [UI Rules](ui-rules.md) - User interface design and implementation guidelines. 
+- [UI Rules](ui-rules.md) - User interface design and implementation guidelines.
+
+## AI Integration
+
+This project uses LangChain for AI capabilities. The integration is configured to work with OpenAI's API services. Key components:
+
+- LangChain for AI chain operations
+- OpenAI API integration
+- Environment-based configuration
+
+For setup instructions and API key configuration, see the AI setup section in the project overview. 

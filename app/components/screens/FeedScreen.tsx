@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,9 +7,9 @@ import {
   Alert,
   Animated,
   Dimensions,
+  FlatList,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { VideoPlayer } from '../VideoPlayer';
@@ -24,12 +24,14 @@ import {
   LoadingStates,
   VideoInfo,
 } from '../feed';
-import { useVideoFeed } from '../../hooks/useVideoFeed';
 import { useComments } from '../../hooks/useComments';
 import { doc, setDoc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { FollowButton } from '../common/FollowButton';
 import { SaveToPlaylistModal } from '../common/SaveToPlaylistModal';
+import { fetchVideos } from '../../services/video';
+import NetInfo from '@react-native-community/netinfo';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 type RootStackParamList = {
   Feed: {
@@ -42,7 +44,7 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Feed'>;
 
-const { height } = Dimensions.get('window');
+const { height: WINDOW_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = 30;
 
 export const FeedScreen = () => {
@@ -50,21 +52,110 @@ export const FeedScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
 
-  // Custom Hooks
-  const {
-    isLoading,
-    isLoadingMore,
-    currentVideoIndex,
-    videos,
-    error,
-    likedVideos,
-    setLikedVideos,
-    setCurrentVideoIndex,
-    loadVideos,
-    handleVideoError,
-    shouldLoadMore,
-    setVideos,
-  } = useVideoFeed();
+  // Replace useVideoFeed hook with direct state management
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [likedVideos, setLikedVideos] = useState<Set<string>>(new Set());
+  const loadingRef = useRef(false);
+
+  // Constants
+  const PAGE_SIZE = 10;
+  const PRELOAD_THRESHOLD = 2;
+
+  // Add video validation helper
+  const validateVideo = useCallback((video: Video): boolean => {
+    if (!video.url || !video.id) {
+      console.error('❌ Invalid video object:', video);
+      return false;
+    }
+    return true;
+  }, []);
+
+  // Improve load videos function
+  const loadVideos = useCallback(async (pageSize: number = PAGE_SIZE, isLoadingMore: boolean = false) => {
+    if (loadingRef.current || !user) return;
+
+    try {
+      loadingRef.current = true;
+      isLoadingMore ? setIsLoadingMore(true) : setIsLoading(true);
+
+      // Check network connectivity first
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        throw new Error('No internet connection');
+      }
+
+      const result = await fetchVideos(pageSize);
+      if ('code' in result) {
+        throw new Error(result.message);
+      }
+
+      // Validate videos before setting
+      const validVideos = result.filter(validateVideo);
+      
+      if (validVideos.length === 0) {
+        throw new Error('No valid videos available');
+      }
+
+      console.log('Fetched videos:', validVideos.map(v => ({
+        id: v.id,
+        url: v.url,
+        isValidUrl: Boolean(v.url && v.url.startsWith('http'))
+      })));
+
+      setVideos(prev => {
+        if (isLoadingMore) {
+          const existingIds = new Set(prev.map(v => v.id));
+          const newVideos = validVideos.filter(v => !existingIds.has(v.id));
+          return [...prev, ...newVideos];
+        }
+        return validVideos;
+      });
+      
+      setError(null);
+    } catch (error: any) {
+      setError(error.message || 'Failed to load videos');
+      Alert.alert('Error', error.message || 'Failed to load videos');
+    } finally {
+      loadingRef.current = false;
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, [user, validateVideo]);
+
+  // Handle video errors
+  const handleVideoError = useCallback((error: string) => {
+    console.error('Video playback error:', error);
+    Alert.alert(
+      'Video Error',
+      error,
+      [
+        {
+          text: 'Retry',
+          onPress: () => loadVideos(PAGE_SIZE, false)
+        },
+        {
+          text: 'Skip',
+          onPress: () => {
+            if (currentVideoIndex < videos.length - 1) {
+              setCurrentVideoIndex(currentVideoIndex + 1);
+            } else {
+              loadVideos(PAGE_SIZE, true);
+            }
+          }
+        }
+      ]
+    );
+  }, [currentVideoIndex, videos.length]);
+
+  // Check if we should load more
+  const shouldLoadMore = useCallback(() => 
+    videos.length - currentVideoIndex <= PRELOAD_THRESHOLD + 1,
+    [videos.length, currentVideoIndex]
+  );
 
   // Derived State
   const currentVideo = videos[currentVideoIndex];
@@ -97,12 +188,6 @@ export const FeedScreen = () => {
   const [showControls, setShowControls] = useState(true);
   const [followedArtists, setFollowedArtists] = useState<Set<string>>(new Set());
   const [showSaveToPlaylist, setShowSaveToPlaylist] = useState(false);
-
-  // Animation Values
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const likeScale = useRef(new Animated.Value(1)).current;
-  const overlayOpacity = useRef(new Animated.Value(1)).current;
 
   // Load followed artists on mount
   useEffect(() => {
@@ -234,98 +319,6 @@ export const FeedScreen = () => {
     }
   };
 
-  // Animation Functions
-  const animateVideoTransition = useCallback((direction: 'up' | 'down') => {
-    const isWrappingAround = (direction === 'up' && currentVideoIndex === videos.length - 1) ||
-                            (direction === 'down' && currentVideoIndex === 0);
-    
-    console.log('🔄 Video Transition:', {
-      direction,
-      fromIndex: currentVideoIndex,
-      toIndex: direction === 'up' ? 
-        (currentVideoIndex + 1) % videos.length : 
-        (currentVideoIndex - 1 + videos.length) % videos.length,
-      currentVideo: currentVideo?.id,
-      nextVideo: nextVideo?.id,
-      isWrappingAround
-    });
-    
-    const distance = direction === 'up' ? -height : height;
-    
-    translateY.setValue(0);
-    fadeAnim.setValue(1);
-    
-    // Add extra delay for wrap-around cases
-    const animationDuration = isWrappingAround ? 400 : 300;
-    const fadeOutDuration = isWrappingAround ? 300 : 200;
-    
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: fadeOutDuration,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: distance,
-        duration: animationDuration,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // Update the index before starting the second animation
-      const nextIndex = direction === 'up' ?
-        (currentVideoIndex + 1) % videos.length :
-        (currentVideoIndex - 1 + videos.length) % videos.length;
-      
-      setCurrentVideoIndex(nextIndex);
-      
-      // Add a small delay before starting the next animation for wrap-around cases
-      const startNextAnimation = () => {
-        translateY.setValue(-distance);
-        Animated.parallel([
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: fadeOutDuration,
-            useNativeDriver: true,
-          }),
-          Animated.timing(translateY, {
-            toValue: 0,
-            duration: animationDuration,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      };
-
-      if (isWrappingAround) {
-        setTimeout(startNextAnimation, 100);
-      } else {
-        startNextAnimation();
-      }
-    });
-  }, [currentVideoIndex, videos.length, currentVideo, nextVideo, height, fadeAnim, translateY]);
-
-  const animateLike = () => {
-    Animated.sequence([
-      Animated.timing(likeScale, {
-        toValue: 1.5,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(likeScale, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const animateControlsVisibility = (visible: boolean) => {
-    Animated.timing(overlayOpacity, {
-      toValue: visible ? 1 : 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  };
-
   // Event Handlers
   const handleLike = async () => {
     if (!user || !currentVideo) return;
@@ -349,9 +342,6 @@ export const FeedScreen = () => {
                 : video
         )
     );
-
-    // Trigger animation immediately
-    animateLike();
 
     // 2. Update Firebase in background
     try {
@@ -401,99 +391,69 @@ export const FeedScreen = () => {
       currentVisibility: showControls, 
       newVisibility: !showControls 
     });
-    animateControlsVisibility(!showControls);
     setShowControls(!showControls);
   };
 
-  // Gesture Handlers
-  const handleSwipeUp = useCallback(() => {
-    console.log('⬆️ Swipe Up:', {
-      currentIndex: currentVideoIndex,
-      nextIndex: (currentVideoIndex + 1) % videos.length,
-      totalVideos: videos.length,
-      shouldLoadMore: shouldLoadMore(),
-      isLoadingMore,
-      isWrappingToStart: currentVideoIndex === videos.length - 1
+  // Remove gesture-related code and animations
+  const renderItem = ({ item, index }: { item: Video; index: number }) => {
+    const isFocused = currentVideoIndex === index;
+    
+    console.log('Rendering video item:', {
+      index,
+      videoId: item.id,
+      videoUrl: item.url,
+      isFocused,
+      currentVideoIndex
     });
 
-    if (videos.length > 0) {
-      if (shouldLoadMore() && !isLoadingMore) {
-        console.log('🔄 Triggering load more videos');
-        loadVideos(10, true);
-      }
-      animateVideoTransition('up');
-    }
-  }, [videos.length, currentVideoIndex, isLoadingMore, shouldLoadMore]);
+    return (
+      <View style={styles.videoContainer}>
+        <TouchableOpacity 
+          activeOpacity={1} 
+          style={styles.videoWrapper}
+          onPress={toggleControls}
+        >
+          <VideoPlayer
+            key={item.id}
+            uri={item.url}
+            isFocused={isFocused}
+            onError={(error) => {
+              console.error('Video error for index', index, error);
+              handleVideoError(error);
+            }}
+            onLoad={() => {
+              console.log('Video loaded successfully:', {
+                index,
+                videoId: item.id
+              });
+            }}
+          />
+          {isFocused && <VideoInfo video={item} />}
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
-  const handleSwipeDown = useCallback(() => {
-    console.log('⬇️ Swipe Down:', {
-      currentIndex: currentVideoIndex,
-      prevIndex: (currentVideoIndex - 1 + videos.length) % videos.length,
-      totalVideos: videos.length,
-      isWrappingToEnd: currentVideoIndex === 0
-    });
-
-    if (videos.length > 0) {
-      animateVideoTransition('down');
-    }
-  }, [videos.length, currentVideoIndex]);
-
-  const gesture = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .onStart(() => {})
-    .onUpdate((event) => {
-      const translation = Math.abs(event.translationY);
-      if (translation > SWIPE_THRESHOLD / 2) {
-        translateY.setValue(event.translationY);
-        fadeAnim.setValue(1 - Math.abs(event.translationY) / height);
-      }
-    })
-    .onEnd((event) => {
-      if (Math.abs(event.translationY) > height * 0.2 || Math.abs(event.velocityY) > SWIPE_THRESHOLD) {
-        if (event.velocityY > 0) {
-          handleSwipeDown();
-        } else {
-          handleSwipeUp();
-        }
-      } else {
-        Animated.parallel([
-          Animated.timing(translateY, {
-            toValue: 0,
-            duration: 150,
-            useNativeDriver: true,
-          }),
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 150,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }
-    });
-
-  // Add focus monitoring
-  useEffect(() => {
-    const unsubscribeFocus = navigation.addListener('focus', () => {
-      console.log('🎯 Screen Focused:', {
-        currentIndex: currentVideoIndex,
-        currentVideo: currentVideo?.id,
-        isMounted: true
+  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    if (viewableItems.length > 0) {
+      const index = viewableItems[0].index;
+      console.log('Viewable items changed:', {
+        newIndex: index,
+        videoId: videos[index]?.id,
+        totalVideos: videos.length,
+        isFullyVisible: viewableItems[0].isViewable
       });
-    });
+      
+      if (typeof index === 'number') {
+        setCurrentVideoIndex(index);
+      }
+    }
+  }, [videos]);
 
-    const unsubscribeBlur = navigation.addListener('blur', () => {
-      console.log('⚫ Screen Blurred:', {
-        currentIndex: currentVideoIndex,
-        currentVideo: currentVideo?.id,
-        isMounted: false
-      });
-    });
-
-    return () => {
-      unsubscribeFocus();
-      unsubscribeBlur();
-    };
-  }, [navigation, currentVideoIndex, currentVideo]);
+  const viewabilityConfig = useMemo(() => ({
+    itemVisiblePercentThreshold: 80, // Increased from 50
+    minimumViewTime: 250, // Increased from 100
+  }), []);
 
   // Loading States
   if (isLoading || error || videos.length === 0) {
@@ -513,6 +473,37 @@ export const FeedScreen = () => {
       
       <NavigationButtons />
       
+      <FlatList
+        data={videos}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        pagingEnabled
+        showsVerticalScrollIndicator={false}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        windowSize={3}
+        maxToRenderPerBatch={3}
+        initialNumToRender={2}
+        removeClippedSubviews={true}
+        getItemLayout={(_, index) => ({
+          length: WINDOW_HEIGHT,
+          offset: WINDOW_HEIGHT * index,
+          index,
+        })}
+        decelerationRate="fast"
+        bounces={false}
+        scrollEventThrottle={16}
+        snapToInterval={WINDOW_HEIGHT}
+        snapToAlignment="start"
+        style={styles.list}
+        onEndReached={() => {
+          if (shouldLoadMore() && !isLoadingMore) {
+            loadVideos(PAGE_SIZE, true);
+          }
+        }}
+        onEndReachedThreshold={0.5}
+      />
+
       <FeedVideoControls
         visible={showControls}
         onLike={() => {
@@ -535,53 +526,6 @@ export const FeedScreen = () => {
         isLiked={!!currentVideo?.id && likedVideos.has(currentVideo.id)}
         isFollowed={!!currentVideo?.artist && followedArtists.has(currentVideo.artist)}
       />
-
-      <GestureDetector gesture={gesture}>
-        <TouchableOpacity 
-          activeOpacity={1} 
-          style={styles.videoContainer}
-          onPress={toggleControls}
-        >
-          <Animated.View style={[
-            styles.videoWrapper,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY }],
-            },
-          ]}>
-            <VideoPlayer
-              uri={currentVideo.url}
-              nextUri={videos[(currentVideoIndex + 1) % videos.length]?.url}
-              nextNextUri={videos[(currentVideoIndex + 2) % videos.length]?.url}
-              isFocused={true}
-              onError={handleVideoError}
-              onLoad={() => {
-                console.log('🎬 VideoPlayer Props:', {
-                  currentIndex: currentVideoIndex,
-                  totalVideos: videos.length,
-                  hasCurrentVideo: !!currentVideo?.url,
-                  nextIndex: (currentVideoIndex + 1) % videos.length,
-                  nextNextIndex: (currentVideoIndex + 2) % videos.length,
-                  hasNextVideo: !!videos[(currentVideoIndex + 1) % videos.length]?.url,
-                  hasNextNextVideo: !!videos[(currentVideoIndex + 2) % videos.length]?.url
-                });
-              }}
-            />
-
-            <VideoInfo video={currentVideo} />
-          </Animated.View>
-        </TouchableOpacity>
-      </GestureDetector>
-
-      {nextVideo && (
-        <View style={[styles.videoContainer, styles.nextVideo]}>
-          <VideoPlayer
-            uri={nextVideo.url}
-            isFocused={false}
-            onError={handleVideoError}
-          />
-        </View>
-      )}
 
       <CommentsSheet
         isVisible={showComments}
@@ -611,12 +555,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  list: {
+    flex: 1,
+  },
   videoContainer: {
-    ...StyleSheet.absoluteFillObject,
+    height: WINDOW_HEIGHT,
+    backgroundColor: '#000',
   },
   videoWrapper: {
     flex: 1,
-    backgroundColor: '#000',
   },
   loadingMoreContainer: {
     position: 'absolute',

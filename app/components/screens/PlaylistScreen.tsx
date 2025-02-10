@@ -263,62 +263,69 @@ export const PlaylistScreen: React.FC = () => {
     }
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
+        <View style={styles.wrapper}>
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Ionicons name="arrow-back" size={24} color="#000" />
+                    </TouchableOpacity>
+                    <Text style={styles.title}>My Playlists</Text>
+                </View>
+
+                <FlatList
+                    data={playlists}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                        <PlaylistItem
+                            playlist={item}
+                            onPress={() => navigation.navigate('PlaylistDetails', { playlist: item })}
+                            onEdit={() => setEditingPlaylist(item)}
+                            onDelete={() => handleDeletePlaylist(item)}
+                        />
+                    )}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Text style={styles.emptyText}>No playlists yet</Text>
+                            <Text style={styles.emptySubtext}>
+                                Create a playlist to save your favorite videos
+                            </Text>
+                        </View>
+                    }
+                />
+
                 <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => navigation.goBack()}
+                    style={styles.fab}
+                    onPress={() => setIsCreateModalVisible(true)}
                 >
-                    <Ionicons name="arrow-back" size={24} color="#000" />
+                    <Ionicons name="add" size={24} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.title}>My Playlists</Text>
+
+                <CreatePlaylistModal
+                    visible={isCreateModalVisible}
+                    onClose={() => setIsCreateModalVisible(false)}
+                    onSubmit={handleCreatePlaylist}
+                />
+
+                <CreatePlaylistModal
+                    visible={!!editingPlaylist}
+                    onClose={() => setEditingPlaylist(null)}
+                    onSubmit={handleEditPlaylist}
+                    initialValues={editingPlaylist || undefined}
+                />
             </View>
-
-            <FlatList
-                data={playlists}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <PlaylistItem
-                        playlist={item}
-                        onPress={() => navigation.navigate('PlaylistDetails', { playlist: item })}
-                        onEdit={() => setEditingPlaylist(item)}
-                        onDelete={() => handleDeletePlaylist(item)}
-                    />
-                )}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>No playlists yet</Text>
-                        <Text style={styles.emptySubtext}>
-                            Create a playlist to save your favorite videos
-                        </Text>
-                    </View>
-                }
-            />
-
-            <TouchableOpacity
-                style={styles.fab}
-                onPress={() => setIsCreateModalVisible(true)}
-            >
-                <Ionicons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
-
-            <CreatePlaylistModal
-                visible={isCreateModalVisible}
-                onClose={() => setIsCreateModalVisible(false)}
-                onSubmit={handleCreatePlaylist}
-            />
-
-            <CreatePlaylistModal
-                visible={!!editingPlaylist}
-                onClose={() => setEditingPlaylist(null)}
-                onSubmit={handleEditPlaylist}
-                initialValues={editingPlaylist || undefined}
-            />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
+    wrapper: {
+        flex: 1,
+        paddingTop: 60,
+        backgroundColor: '#fff'
+    },
     container: {
         flex: 1,
         backgroundColor: '#fff'
@@ -333,7 +340,10 @@ const styles = StyleSheet.create({
     },
     backButton: {
         padding: 8,
-        marginRight: 8,
+        marginRight: 16,
+        borderRadius: 20,
+        backgroundColor: '#F5F5F5',
+        elevation: 3,
     },
     title: {
         fontSize: 20,

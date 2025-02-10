@@ -204,152 +204,159 @@ export const ProfileScreen = () => {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleAvatarPress}
-          disabled={!editMode || uploadingAvatar}
-          style={styles.avatarContainer}
-        >
-          {uploadingAvatar ? (
-            <View style={styles.avatarLoading}>
-              <ActivityIndicator color="#37474F" />
-            </View>
-          ) : (
-            <>
-              <Image
-                source={{ 
-                  uri: preferences?.avatarUrl || user?.photoURL || 'https://via.placeholder.com/150'
-                }}
-                style={styles.avatar}
-              />
-              {editMode && (
-                <View style={styles.avatarOverlay}>
-                  <MaterialIcons name="camera-alt" size={24} color="#fff" />
-                </View>
-              )}
-            </>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.username}>{user?.displayName || 'User'}</Text>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => setEditMode(!editMode)}
-        >
-          <MaterialIcons
-            name={editMode ? 'close' : 'edit'}
-            size={24}
-            color="#000"
-          />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferred Genres</Text>
-        <View style={styles.tagsContainer}>
-          {GENRES.map((genre) => (
-            <TouchableOpacity
-              key={genre}
-              style={[
-                styles.tag,
-                selectedGenres.includes(genre.toLowerCase()) && styles.selectedTag,
-                !editMode && styles.readOnlyTag,
-              ]}
-              onPress={() => editMode && toggleGenre(genre)}
-              disabled={!editMode}
-            >
-              <Text
-                style={[
-                  styles.tagText,
-                  selectedGenres.includes(genre.toLowerCase()) && styles.selectedTagText,
-                ]}
-              >
-                {genre}
-              </Text>
-            </TouchableOpacity>
-          ))}
+    <View style={styles.wrapper}>
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#000" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleAvatarPress}
+            disabled={!editMode || uploadingAvatar}
+            style={styles.avatarContainer}
+          >
+            {uploadingAvatar ? (
+              <View style={styles.avatarLoading}>
+                <ActivityIndicator color="#37474F" />
+              </View>
+            ) : (
+              <>
+                <Image
+                  source={{ 
+                    uri: preferences?.avatarUrl || user?.photoURL || 'https://via.placeholder.com/150'
+                  }}
+                  style={styles.avatar}
+                />
+                {editMode && (
+                  <View style={styles.avatarOverlay}>
+                    <MaterialIcons name="camera-alt" size={24} color="#fff" />
+                  </View>
+                )}
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.username}>{user?.displayName || 'User'}</Text>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => setEditMode(!editMode)}
+          >
+            <MaterialIcons
+              name={editMode ? 'close' : 'edit'}
+              size={24}
+              color="#000"
+            />
+          </TouchableOpacity>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferred Moods</Text>
-        <View style={styles.tagsContainer}>
-          {MOODS.map((mood) => (
-            <TouchableOpacity
-              key={mood}
-              style={[
-                styles.tag,
-                selectedMoods.includes(mood.toLowerCase()) && styles.selectedTag,
-                !editMode && styles.readOnlyTag,
-              ]}
-              onPress={() => editMode && toggleMood(mood)}
-              disabled={!editMode}
-            >
-              <Text
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferred Genres</Text>
+          <View style={styles.tagsContainer}>
+            {GENRES.map((genre) => (
+              <TouchableOpacity
+                key={genre}
                 style={[
-                  styles.tagText,
-                  selectedMoods.includes(mood.toLowerCase()) && styles.selectedTagText,
+                  styles.tag,
+                  selectedGenres.includes(genre.toLowerCase()) && styles.selectedTag,
+                  !editMode && styles.readOnlyTag,
                 ]}
+                onPress={() => editMode && toggleGenre(genre)}
+                disabled={!editMode}
               >
-                {mood}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {editMode && (
-        <TouchableOpacity
-          style={styles.saveButton}
-          onPress={handleSavePreferences}
-        >
-          <Text style={styles.saveButtonText}>Save Changes</Text>
-        </TouchableOpacity>
-      )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Following Artists</Text>
-        {preferences?.following?.length > 0 ? (
-          <View style={styles.artistList}>
-            {preferences.following.map((artist: string) => (
-              <Text key={artist} style={styles.artistItem}>
-                {artist}
-              </Text>
+                <Text
+                  style={[
+                    styles.tagText,
+                    selectedGenres.includes(genre.toLowerCase()) && styles.selectedTagText,
+                  ]}
+                >
+                  {genre}
+                </Text>
+              </TouchableOpacity>
             ))}
           </View>
-        ) : (
-          <Text style={styles.emptyText}>No artists followed yet</Text>
-        )}
-      </View>
-
-      <TouchableOpacity
-        style={styles.section}
-        onPress={() => navigation.navigate('Playlists')}
-      >
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>My Playlists</Text>
-          <MaterialIcons name="chevron-right" size={24} color="#37474F" />
         </View>
-      </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={handleLogout}
-      >
-        <MaterialIcons name="logout" size={24} color="#fff" />
-        <Text style={styles.logoutButtonText}>Log Out</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferred Moods</Text>
+          <View style={styles.tagsContainer}>
+            {MOODS.map((mood) => (
+              <TouchableOpacity
+                key={mood}
+                style={[
+                  styles.tag,
+                  selectedMoods.includes(mood.toLowerCase()) && styles.selectedTag,
+                  !editMode && styles.readOnlyTag,
+                ]}
+                onPress={() => editMode && toggleMood(mood)}
+                disabled={!editMode}
+              >
+                <Text
+                  style={[
+                    styles.tagText,
+                    selectedMoods.includes(mood.toLowerCase()) && styles.selectedTagText,
+                  ]}
+                >
+                  {mood}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {editMode && (
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={handleSavePreferences}
+          >
+            <Text style={styles.saveButtonText}>Save Changes</Text>
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Following Artists</Text>
+          {preferences?.following?.length > 0 ? (
+            <View style={styles.artistList}>
+              {preferences.following.map((artist: string) => (
+                <Text key={artist} style={styles.artistItem}>
+                  {artist}
+                </Text>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>No artists followed yet</Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={styles.section}
+          onPress={() => navigation.navigate('Playlists')}
+        >
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Playlists</Text>
+            <MaterialIcons name="chevron-right" size={24} color="#37474F" />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+        >
+          <MaterialIcons name="logout" size={24} color="#fff" />
+          <Text style={styles.logoutButtonText}>Log Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+    paddingTop: 60,
+    backgroundColor: '#F5F5F5',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
@@ -506,7 +513,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     top: 20,
-    padding: 10,
+    padding: 8,
+    marginRight: 16,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+    elevation: 3,
     zIndex: 1,
   },
   avatarContainer: {

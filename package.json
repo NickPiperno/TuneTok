@@ -28,6 +28,7 @@
     "expo": "^52.0.28",
     "expo-application": "~6.0.2",
     "expo-av": "~15.0.2",
+    "expo-clipboard": "~7.0.1",
     "expo-crypto": "^14.0.2",
     "expo-dev-client": "~5.0.11",
     "expo-file-system": "^18.0.9",
@@ -40,12 +41,14 @@
     "firebase": "^11.2.0",
     "firebase-admin": "^13.0.2",
     "firebase-functions": "^6.3.1",
+    "langchain": "^0.3.15",
+    "openai": "^4.83.0",
     "react": "18.3.1",
     "react-native": "0.76.6",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-safe-area-context": "^5.2.0",
     "react-native-screens": "^4.6.0",
-    "expo-clipboard": "~7.0.1"
+    "expo-video": "~2.0.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -62,6 +65,7 @@
     "eslint-plugin-react-native": "^5.0.0",
     "expo-cli": "^6.3.12",
     "prettier": "^3.4.2",
+    "react-native-dotenv": "^3.4.11",
     "typescript": "^5.7.3"
   },
   "private": true

@@ -32,7 +32,8 @@
     },
     "plugins": [
       "./app.plugin",
-      "./plugins/kotlin-jvm-target.plugin"
+      "./plugins/kotlin-jvm-target.plugin",
+      "expo-video"
     ],
     "newArchEnabled": true
   }

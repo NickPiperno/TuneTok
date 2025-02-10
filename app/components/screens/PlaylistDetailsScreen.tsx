@@ -196,101 +196,108 @@ export const PlaylistDetailsScreen: React.FC = () => {
     }
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => navigation.goBack()}
-                >
-                    <Ionicons name="arrow-back" size={24} color="#000" />
-                </TouchableOpacity>
-                <Text style={styles.playlistName}>{playlistState.playlistName}</Text>
-                {playlistState.playlistDescription && (
-                    <Text style={styles.playlistDescription}>
-                        {playlistState.playlistDescription}
-                    </Text>
-                )}
-                <View style={styles.playlistActions}>
+        <View style={styles.wrapper}>
+            <View style={styles.container}>
+                <View style={styles.header}>
                     <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={handlePrivacyToggle}
+                        style={styles.backButton}
+                        onPress={() => navigation.goBack()}
                     >
-                        <Ionicons
-                            name={playlistState.isPrivate ? 'lock-closed' : 'lock-open'}
-                            size={24}
-                            color="#666"
-                        />
+                        <Ionicons name="arrow-back" size={24} color="#000" />
                     </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[
-                            styles.actionButton,
-                            playlistState.isPrivate && styles.disabledButton
-                        ]}
-                        onPress={handleShare}
-                        disabled={playlistState.isPrivate}
-                    >
-                        <Ionicons
-                            name="share-outline"
-                            size={24}
-                            color={playlistState.isPrivate ? '#ccc' : '#666'}
-                        />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[
-                            styles.actionButton,
-                            playlistState.isPrivate && styles.disabledButton
-                        ]}
-                        onPress={handleCopyLink}
-                        disabled={playlistState.isPrivate}
-                    >
-                        <Ionicons
-                            name="copy-outline"
-                            size={24}
-                            color={playlistState.isPrivate ? '#ccc' : '#666'}
-                        />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={handleSpotifyPress}
-                    >
-                        <MaterialCommunityIcons
-                            name="spotify"
-                            size={28}
-                            color="#1DB954"
-                        />
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {error && (
-                <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                </View>
-            )}
-
-            <FlatList
-                data={videos}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                    <VideoItem
-                        video={item}
-                        onRemove={() => handleRemoveVideo(item.id)}
-                    />
-                )}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>No videos in playlist</Text>
-                        <Text style={styles.emptySubtext}>
-                            Add videos from the feed to get started
+                    <Text style={styles.playlistName}>{playlistState.playlistName}</Text>
+                    {playlistState.playlistDescription && (
+                        <Text style={styles.playlistDescription}>
+                            {playlistState.playlistDescription}
                         </Text>
+                    )}
+                    <View style={styles.playlistActions}>
+                        <TouchableOpacity
+                            style={styles.actionButton}
+                            onPress={handlePrivacyToggle}
+                        >
+                            <Ionicons
+                                name={playlistState.isPrivate ? 'lock-closed' : 'lock-open'}
+                                size={24}
+                                color="#666"
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[
+                                styles.actionButton,
+                                playlistState.isPrivate && styles.disabledButton
+                            ]}
+                            onPress={handleShare}
+                            disabled={playlistState.isPrivate}
+                        >
+                            <Ionicons
+                                name="share-outline"
+                                size={24}
+                                color={playlistState.isPrivate ? '#ccc' : '#666'}
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[
+                                styles.actionButton,
+                                playlistState.isPrivate && styles.disabledButton
+                            ]}
+                            onPress={handleCopyLink}
+                            disabled={playlistState.isPrivate}
+                        >
+                            <Ionicons
+                                name="copy-outline"
+                                size={24}
+                                color={playlistState.isPrivate ? '#ccc' : '#666'}
+                            />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.actionButton}
+                            onPress={handleSpotifyPress}
+                        >
+                            <MaterialCommunityIcons
+                                name="spotify"
+                                size={28}
+                                color="#1DB954"
+                            />
+                        </TouchableOpacity>
                     </View>
-                }
-            />
+                </View>
+
+                {error && (
+                    <View style={styles.errorContainer}>
+                        <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                )}
+
+                <FlatList
+                    data={videos}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                        <VideoItem
+                            video={item}
+                            onRemove={() => handleRemoveVideo(item.id)}
+                        />
+                    )}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Text style={styles.emptyText}>No videos in playlist</Text>
+                            <Text style={styles.emptySubtext}>
+                                Add videos from the feed to get started
+                            </Text>
+                        </View>
+                    }
+                />
+            </View>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
+    wrapper: {
+        flex: 1,
+        paddingTop: 60,
+        backgroundColor: '#fff'
+    },
     container: {
         flex: 1,
         backgroundColor: '#fff'
@@ -390,6 +397,10 @@ const styles = StyleSheet.create({
         left: 16,
         top: 16,
         padding: 8,
+        marginRight: 16,
+        borderRadius: 20,
+        backgroundColor: '#F5F5F5',
+        elevation: 3,
         zIndex: 1,
     },
     disabledButton: {

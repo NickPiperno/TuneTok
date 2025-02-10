@@ -41,7 +41,7 @@ export const NavigationButtons: React.FC = () => {
 const styles = StyleSheet.create({
   searchButton: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 40 : 20,
+    top: 50,
     left: 20,
     zIndex: 10,
     padding: 8,
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 40 : 20,
+    top: 50,
     right: 20,
     zIndex: 10,
     padding: 8,
