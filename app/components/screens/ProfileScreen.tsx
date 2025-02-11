@@ -37,6 +37,7 @@ type RootStackParamList = {
   Playlists: undefined;
   PlaylistDetails: { playlist: Playlist };
   Onboarding: undefined;
+  SongIdentify: undefined;
 };
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -335,6 +336,16 @@ export const ProfileScreen = () => {
         >
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>My Playlists</Text>
+            <MaterialIcons name="chevron-right" size={24} color="#37474F" />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.section}
+          onPress={() => navigation.navigate('SongIdentify')}
+        >
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Identify Songs</Text>
             <MaterialIcons name="chevron-right" size={24} color="#37474F" />
           </View>
         </TouchableOpacity>

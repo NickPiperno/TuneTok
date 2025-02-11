@@ -15,6 +15,7 @@ import { ProfileScreen } from './components/screens/ProfileScreen';
 import { PlaylistScreen } from './components/screens/PlaylistScreen';
 import { PlaylistDetailsScreen } from './components/screens/PlaylistDetailsScreen';
 import { ActivityIndicator } from 'react-native';
+import { SongIdentifyScreen } from './components/screens/SongIdentifyScreen';
 
 // Initialize navigation stack
 const Stack = createNativeStackNavigator();
@@ -49,6 +50,7 @@ function NavigationContent() {
             <Stack.Screen name="Playlists" component={PlaylistScreen} />
             <Stack.Screen name="PlaylistDetails" component={PlaylistDetailsScreen} />
             <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+            <Stack.Screen name="SongIdentify" component={SongIdentifyScreen} />
           </>
         ) : (
           // Non-authenticated stack

@@ -63,11 +63,3 @@ This application is being developed for Android devices only. We are not targeti
    OPENAI_API_KEY=your_api_key_here
    ```
 3. Never commit the `.env` file to version control
-
-The project uses LangChain for AI operations, configured specifically for React Native compatibility.
-
-### Limitations
-
-- File system operations from LangChain are not supported in React Native
-- Only API-based features are available
-- Local model execution is not supported
