@@ -181,9 +181,28 @@ export const removeVideoFromPlaylist = async (
     }
 };
 
-export const deletePlaylist = async (playlistId: string): Promise<boolean | PlaylistError> => {
+export const deletePlaylist = async (playlistId: string, userId: string): Promise<boolean | PlaylistError> => {
     try {
-        await deleteDoc(doc(db, PLAYLISTS_COLLECTION, playlistId));
+        // First verify the playlist belongs to the user
+        const playlistRef = doc(db, PLAYLISTS_COLLECTION, playlistId);
+        const playlistDoc = await getDoc(playlistRef);
+        
+        if (!playlistDoc.exists()) {
+            return {
+                code: 'playlist-not-found',
+                message: 'Playlist not found'
+            };
+        }
+
+        const playlistData = playlistDoc.data();
+        if (playlistData.userId !== userId) {
+            return {
+                code: 'permission-denied',
+                message: 'You do not have permission to delete this playlist'
+            };
+        }
+
+        await deleteDoc(playlistRef);
         return true;
     } catch (error) {
         console.error('Failed to delete playlist:', error);

@@ -225,3 +225,5 @@ export const fetchVideoMetadataForPlaylist = async (
         return handleError(error, `fetching video metadata ${videoId}`);
     }
 }; 
+
+export { Video };

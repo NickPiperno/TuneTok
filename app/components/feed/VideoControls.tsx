@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,6 +7,7 @@ import {
   Animated,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { usePlaylist } from '../../hooks/usePlaylist';
 
 interface VideoControlsProps {
   visible: boolean;
@@ -21,6 +22,7 @@ interface VideoControlsProps {
   isLiked: boolean;
   isFollowed: boolean;
   isSaved: boolean;
+  videoId: string;
 }
 
 export const VideoControls: React.FC<VideoControlsProps> = ({
@@ -36,14 +38,54 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
   isLiked,
   isFollowed,
   isSaved,
+  videoId
 }) => {
-  console.log('🎮 VideoControls: Rendering with props:', {
-    visible,
-    likes,
-    comments,
-    shares,
-    isLiked,
-    isFollowed
+  const { playlists, loadPlaylists } = usePlaylist();
+  const [isVideoSaved, setIsVideoSaved] = useState(isSaved);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
+  // Load playlists when component mounts and periodically check for updates
+  useEffect(() => {
+    loadPlaylists();
+    
+    // Set up an interval to refresh playlists
+    const intervalId = setInterval(() => {
+      loadPlaylists();
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, [loadPlaylists]);
+
+  // Update isVideoSaved whenever a save action occurs or playlists change
+  const handleSavePress = useCallback(async () => {
+    onSave();
+    setShowSaveModal(true);
+  }, [onSave]);
+
+  // Add this handler for when save is complete
+  const handleSaveComplete = useCallback(async () => {
+    await loadPlaylists();
+  }, [loadPlaylists]);
+
+  // Update isVideoSaved whenever playlists change
+  useEffect(() => {
+    const videoExistsInPlaylists = playlists.some(playlist => 
+      playlist.videos.includes(videoId)
+    );
+    console.log('💾 VideoControls: Checking save status:', {
+      videoId,
+      playlists: playlists.map(p => ({ id: p.id, videos: p.videos })),
+      isVideoSaved: videoExistsInPlaylists
+    });
+    setIsVideoSaved(videoExistsInPlaylists);
+  }, [playlists, videoId]);
+
+  // Add debug log for render
+  console.log('🎮 VideoControls: Rendering with state:', {
+    videoId,
+    playlists: playlists.length,
+    isVideoSaved,
+    isSaved
   });
   
   const [scaleAnim] = useState(new Animated.Value(1));
@@ -77,44 +119,46 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
   if (!visible) return null;
 
   return (
-    <Animated.View style={[styles.container, { opacity: visible ? 1 : 0 }]}>
-      <TouchableOpacity style={styles.button} onPress={onLike}>
-        <MaterialCommunityIcons
-          name={isLiked ? 'heart' : 'heart-outline'}
-          size={35}
-          color={isLiked ? '#ff4545' : 'white'}
-        />
-        <Text style={styles.buttonText}>{likes}</Text>
-      </TouchableOpacity>
+    <>
+      <Animated.View style={[styles.container, { opacity: visible ? 1 : 0 }]}>
+        <TouchableOpacity style={styles.button} onPress={onLike}>
+          <MaterialCommunityIcons
+            name={isLiked ? 'heart' : 'heart-outline'}
+            size={35}
+            color={isLiked ? '#ff4545' : 'white'}
+          />
+          <Text style={styles.buttonText}>{likes}</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onComment}>
-        <MaterialCommunityIcons name="comment-outline" size={35} color="white" />
-        <Text style={styles.buttonText}>{comments}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={onComment}>
+          <MaterialCommunityIcons name="comment-outline" size={35} color="white" />
+          <Text style={styles.buttonText}>{comments}</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onShare}>
-        <MaterialCommunityIcons name="share" size={35} color="white" />
-        <Text style={styles.buttonText}>{shares}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={onShare}>
+          <MaterialCommunityIcons name="share" size={35} color="white" />
+          <Text style={styles.buttonText}>{shares}</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onFollow}>
-        <MaterialCommunityIcons
-          name={isFollowed ? 'account-check' : 'account-plus'}
-          size={35}
-          color={isFollowed ? '#45ff75' : 'white'}
-        />
-        <Text style={styles.buttonText}>{isFollowed ? 'Following' : 'Follow'}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={onFollow}>
+          <MaterialCommunityIcons
+            name={isFollowed ? 'account-check' : 'account-plus'}
+            size={35}
+            color={isFollowed ? '#45ff75' : 'white'}
+          />
+          <Text style={styles.buttonText}>Follow</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={styles.button} onPress={onSave}>
-        <MaterialCommunityIcons
-          name={isSaved ? 'playlist-check' : 'playlist-plus'}
-          size={35}
-          color={isSaved ? '#45ff75' : 'white'}
-        />
-        <Text style={styles.buttonText}>Save</Text>
-      </TouchableOpacity>
-    </Animated.View>
+        <TouchableOpacity style={styles.button} onPress={handleSavePress}>
+          <MaterialCommunityIcons
+            name={isVideoSaved ? 'playlist-check' : 'playlist-plus'}
+            size={35}
+            color={isVideoSaved ? '#45ff75' : 'white'}
+          />
+          <Text style={styles.buttonText}>Save</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </>
   );
 };
 

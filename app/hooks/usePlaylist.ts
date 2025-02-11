@@ -11,6 +11,8 @@ import {
     updatePlaylist
 } from '../services/playlist';
 import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 interface UsePlaylistResult {
     playlists: Playlist[];
@@ -32,6 +34,7 @@ export const usePlaylist = (): UsePlaylistResult => {
     const [error, setError] = useState<string | null>(null);
     const [isOnline, setIsOnline] = useState(true);
     const [failedOperation, setFailedOperation] = useState<(() => Promise<void>) | null>(null);
+    const navigation = useNavigation();
 
     // Monitor network connectivity
     useEffect(() => {
@@ -168,18 +171,35 @@ export const usePlaylist = (): UsePlaylistResult => {
     }, []);
 
     const deleteUserPlaylist = useCallback(async (playlistId: string): Promise<boolean> => {
-        try {
-            const result = await deletePlaylist(playlistId);
-            if (typeof result === 'boolean' && result) {
-                // Update local state
-                setPlaylists(prev => prev.filter(playlist => playlist.id !== playlistId));
-            }
-            return typeof result === 'boolean' ? result : false;
-        } catch (err) {
-            console.error('Error deleting playlist:', err);
+        if (!auth.currentUser) {
+            console.error('No authenticated user');
+            Alert.alert('Error', 'You must be logged in to delete playlists');
             return false;
         }
-    }, []);
+
+        try {
+            const result = await deletePlaylist(playlistId, auth.currentUser.uid);
+            if (typeof result === 'object' && 'code' in result) {
+                console.error('Delete playlist error:', result.message);
+                Alert.alert('Error', result.message);
+                return false;
+            }
+            
+            // Update the global playlists state
+            setPlaylists(prevPlaylists => 
+                prevPlaylists.filter(playlist => playlist.id !== playlistId)
+            );
+
+            // Navigate back to playlist screen after successful deletion
+            navigation.goBack();
+            
+            return true;
+        } catch (err) {
+            console.error('Error deleting playlist:', err);
+            Alert.alert('Error', 'Failed to delete playlist. Please try again.');
+            return false;
+        }
+    }, [navigation]);
 
     const updateUserPlaylist = useCallback(async (
         playlistId: string,

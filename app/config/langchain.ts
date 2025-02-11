@@ -1,4 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
+import 'react-native-polyfill-globals/auto';
+import 'react-native-url-polyfill/auto';
 
 // Initialize the OpenAI model
 export const openAIModel = new ChatOpenAI({

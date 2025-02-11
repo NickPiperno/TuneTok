@@ -233,6 +233,8 @@ export const PlaylistScreen: React.FC = () => {
                         const success = await deleteUserPlaylist(playlist.id);
                         if (!success) {
                             Alert.alert('Error', 'Failed to delete playlist');
+                        } else {
+                            loadPlaylists();
                         }
                     }
                 }

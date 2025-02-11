@@ -112,9 +112,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Reduced bottom padding to move content lower
+    paddingBottom: 60,
     paddingHorizontal: 16,
-    paddingTop: 100, // Keep gradient padding
+    paddingTop: 80,
   },
   videoInfo: {
     marginBottom: 0,

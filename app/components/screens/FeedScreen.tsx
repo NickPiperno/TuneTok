@@ -525,6 +525,7 @@ export const FeedScreen = () => {
         shares={currentVideo?.shares || 0}
         isLiked={!!currentVideo?.id && likedVideos.has(currentVideo.id)}
         isFollowed={!!currentVideo?.artist && followedArtists.has(currentVideo.artist)}
+        videoId={currentVideo?.id || ''}
       />
 
       <CommentsSheet

@@ -109,7 +109,15 @@ export const PlaylistDetailsScreen: React.FC = () => {
                     style: 'destructive',
                     onPress: async () => {
                         const success = await removeVideo(playlistState.id, videoId);
-                        if (!success) {
+                        if (success) {
+                            // Update both playlist state and videos state
+                            setPlaylistState(prev => ({
+                                ...prev,
+                                videos: prev.videos.filter(vid => vid !== videoId)
+                            }));
+                            // Update the videos state as well
+                            setVideos(prev => prev.filter(video => video.id !== videoId));
+                        } else {
                             Alert.alert('Error', 'Failed to remove video');
                         }
                     }

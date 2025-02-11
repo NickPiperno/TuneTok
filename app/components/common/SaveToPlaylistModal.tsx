@@ -19,6 +19,7 @@ interface SaveToPlaylistModalProps {
     isVisible: boolean;
     onClose: () => void;
     videoId: string;
+    onSaveComplete?: () => void;
 }
 
 interface PlaylistItemProps {
@@ -47,7 +48,8 @@ const PlaylistItem: React.FC<PlaylistItemProps> = ({ playlist, onSelect, isSelec
 export const SaveToPlaylistModal: React.FC<SaveToPlaylistModalProps> = ({
     isVisible,
     onClose,
-    videoId
+    videoId,
+    onSaveComplete
 }) => {
     const { user } = useAuth();
     const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -102,7 +104,12 @@ export const SaveToPlaylistModal: React.FC<SaveToPlaylistModalProps> = ({
             );
             await Promise.all(promises);
             
-            Alert.alert('Success', 'Video saved to selected playlists');
+            await loadPlaylists();
+            if (onSaveComplete) {
+                onSaveComplete();
+            }
+            
+            setSelectedPlaylists(new Set());
             onClose();
         } catch (error) {
             Alert.alert('Error', 'Failed to save video to playlists');
