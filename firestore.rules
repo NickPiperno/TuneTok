@@ -23,13 +23,7 @@ service cloud.firestore {
     
     // UserPreferences rules
     match /userPreferences/{userId} {
-      allow read: if isAuthenticated(); // Allow authenticated users to read preferences (needed for following status)
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || 
-        (isAuthenticated() && 
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['following']) &&
-         (request.resource.data.following.size() == resource.data.following.size() + 1 ||
-          request.resource.data.following.size() == resource.data.following.size() - 1));
+      allow read, write: if isOwner(userId);
     }
     
     // Comments rules
@@ -48,17 +42,15 @@ service cloud.firestore {
     
     // Interactions rules
     match /interactions/{interactionId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid || 
-         resource.data.videoId in get(/databases/$(database)/documents/videoMetadata/$(resource.data.videoId)).data.artist);
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isOwner(resource.data.userId);
     }
     
     // UserSessions rules
     match /userSessions/{sessionId} {
-      allow read, write: if isAuthenticated() && 
-        request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow write: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
     }
   }
 }

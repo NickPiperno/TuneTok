@@ -17,7 +17,7 @@ import { VideoPlayer } from '../VideoPlayer';
 import { signOut } from '../../services/auth';
 import { CommentsSheet } from '../common/CommentsSheet';
 import { useAuth } from '../../contexts/AuthContext';
-import { recordInteraction, updateUserPreferences } from '../../services/videoMetadata';
+import { recordInteraction, updateUserPreferences, updateUserSession } from '../../services/videoMetadata';
 import { Video } from '../../types/video';
 import {
   VideoControls as FeedVideoControls,
@@ -33,6 +33,9 @@ import { SaveToPlaylistModal } from '../common/SaveToPlaylistModal';
 import { fetchVideos } from '../../services/video';
 import NetInfo from '@react-native-community/netinfo';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import { InsightPill } from '../feed/InsightPill';
+import { analyzeSessionInsights } from '../../services/ai/sessionInsightAnalyzer';
+import { narrateSessionInsights } from '../../services/ai/sessionNarrator';
 
 type RootStackParamList = {
   Feed: {
@@ -336,6 +339,182 @@ export const FeedScreen = () => {
     });
   }, [currentVideoIndex, videos, currentVideo, nextVideo, nextNextVideo]);
 
+  // Track session state with useRef to avoid re-renders
+  const sessionRef = useRef<{
+    sessionId: string;
+    startTime: Date;
+    videosWatched: Array<{
+      videoId: string;
+      watchDuration: number;
+      timeOfDay: string;
+      deviceType: string;
+      startedAt?: number;
+      isPaused: boolean;
+    }>;
+  } | null>(null);
+
+  // Initialize session when component mounts or user changes
+  useEffect(() => {
+    if (user) {
+      sessionRef.current = {
+        sessionId: `${user.uid}_${Date.now()}`,
+        startTime: new Date(),
+        videosWatched: []
+      };
+      console.log('📝 Session initialized:', sessionRef.current);
+    }
+  }, [user]);
+
+  // Track the current video's start time
+  const videoStartTimeRef = useRef<number | null>(null);
+
+  // Calculate and update watch duration for current video
+  const updateWatchDuration = useCallback(() => {
+    if (!sessionRef.current || !currentVideo || !videoStartTimeRef.current) return;
+
+    const existingVideoIndex = sessionRef.current.videosWatched.findIndex(
+      v => v.videoId === currentVideo.id
+    );
+
+    if (existingVideoIndex >= 0) {
+      const video = sessionRef.current.videosWatched[existingVideoIndex];
+      if (!video.isPaused) {
+        const now = Date.now();
+        const elapsed = Math.floor((now - videoStartTimeRef.current) / 1000); // Convert to seconds
+        video.watchDuration += elapsed;
+        console.log('⏱️ Updated watch duration:', {
+          videoId: currentVideo.id,
+          elapsed,
+          total: video.watchDuration
+        });
+      }
+      // Reset start time for next measurement
+      videoStartTimeRef.current = Date.now();
+    }
+  }, [currentVideo]);
+
+  // Start periodic duration updates
+  useEffect(() => {
+    if (!currentVideo || !sessionRef.current) return;
+
+    // Update duration every second while video is playing
+    const updateInterval = setInterval(() => {
+      const video = sessionRef.current?.videosWatched.find(v => v.videoId === currentVideo.id);
+      if (video && !video.isPaused) {
+        updateWatchDuration();
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(updateInterval);
+      // Update one final time when cleaning up
+      updateWatchDuration();
+    };
+  }, [currentVideo, updateWatchDuration]);
+
+  // Save session to Firebase
+  const saveSession = useCallback(async () => {
+    if (!sessionRef.current || !user) return;
+
+    try {
+      await updateUserSession({
+        userId: user.uid,
+        sessionId: sessionRef.current.sessionId,
+        startTime: sessionRef.current.startTime,
+        endTime: new Date(),
+        videosWatched: sessionRef.current.videosWatched
+      });
+      console.log('💾 Session saved to Firebase:', {
+        sessionId: sessionRef.current.sessionId,
+        videosCount: sessionRef.current.videosWatched.length
+      });
+    } catch (error) {
+      console.error('Failed to save session:', error);
+    }
+  }, [user]);
+
+  // Handle video changes in viewability
+  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    if (viewableItems.length > 0) {
+      const index = viewableItems[0].index;
+      console.log('Viewable items changed:', {
+        newIndex: index,
+        videoId: videos[index]?.id,
+        totalVideos: videos.length,
+        isFullyVisible: viewableItems[0].isViewable
+      });
+      
+      if (typeof index === 'number') {
+        // Update duration and save session before changing videos
+        updateWatchDuration();
+        saveSession();
+        
+        setCurrentVideoIndex(index);
+        // Resume playback when a new video becomes viewable
+        setIsVideoPlaying(true);
+        
+        // Start timing for new video
+        if (videos[index]) {
+          videoStartTimeRef.current = Date.now();
+        }
+      }
+    }
+  }, [videos, updateWatchDuration, saveSession]);
+
+  // Add video watch tracking to handleVideoPlaybackStateChange
+  const handleVideoPlaybackStateChange = useCallback((isPlaying: boolean, isFocused: boolean) => {
+    if (isFocused) {
+      handlePlaybackStateChange(isPlaying);
+      
+      // Track video watch duration
+      if (currentVideo && sessionRef.current && user) {
+        const now = new Date();
+        const timeOfDay = now.getHours() < 12 ? 'morning' : 
+                         now.getHours() < 17 ? 'afternoon' : 
+                         now.getHours() < 21 ? 'evening' : 'night';
+
+        const existingVideoIndex = sessionRef.current.videosWatched.findIndex(
+          v => v.videoId === currentVideo.id
+        );
+        
+        if (existingVideoIndex >= 0) {
+          // Update existing video's pause state
+          sessionRef.current.videosWatched[existingVideoIndex].isPaused = !isPlaying;
+          if (isPlaying) {
+            videoStartTimeRef.current = Date.now();
+            console.log('▶️ Video resumed:', currentVideo.id);
+          } else {
+            // Update duration when video is paused
+            updateWatchDuration();
+            console.log('⏸️ Video paused:', currentVideo.id);
+          }
+        } else {
+          // Add new video to session
+          sessionRef.current.videosWatched.push({
+            videoId: currentVideo.id,
+            watchDuration: 0,
+            timeOfDay,
+            deviceType: 'mobile',
+            isPaused: !isPlaying,
+            startedAt: isPlaying ? Date.now() : undefined
+          });
+          if (isPlaying) {
+            videoStartTimeRef.current = Date.now();
+            console.log('🎬 Started watching new video:', currentVideo.id);
+          }
+        }
+      }
+    }
+  }, [handlePlaybackStateChange, currentVideo, user, updateWatchDuration]);
+
+  // Cleanup and final save on unmount
+  useEffect(() => {
+    return () => {
+      updateWatchDuration();
+      saveSession();
+    };
+  }, [updateWatchDuration, saveSession]);
+
   const handleFollowChange = async (isFollowed: boolean) => {
     console.log('👆 FeedScreen: Follow change triggered', { 
       isFollowed, 
@@ -528,13 +707,6 @@ export const FeedScreen = () => {
     }
   };
 
-  // Add this at the component level, before renderItem
-  const handleVideoPlaybackStateChange = useCallback((isPlaying: boolean, isFocused: boolean) => {
-    if (isFocused) {
-      handlePlaybackStateChange(isPlaying);
-    }
-  }, [handlePlaybackStateChange]);
-
   const renderItem = ({ item, index }: { item: Video; index: number }) => {
     const isFocused = currentVideoIndex === index;
     
@@ -579,28 +751,52 @@ export const FeedScreen = () => {
     );
   };
 
-  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
-    if (viewableItems.length > 0) {
-      const index = viewableItems[0].index;
-      console.log('Viewable items changed:', {
-        newIndex: index,
-        videoId: videos[index]?.id,
-        totalVideos: videos.length,
-        isFullyVisible: viewableItems[0].isViewable
-      });
-      
-      if (typeof index === 'number') {
-        setCurrentVideoIndex(index);
-        // Resume playback when a new video becomes viewable
-        setIsVideoPlaying(true);
-      }
-    }
-  }, [videos]);
-
   const viewabilityConfig = useMemo(() => ({
     itemVisiblePercentThreshold: 80, // Increased from 50
     minimumViewTime: 250, // Increased from 100
   }), []);
+
+  // Simplified insight state
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  const [narratedInsights, setNarratedInsights] = useState<string>('');
+
+  // Add effect to periodically trigger insight analysis
+  useEffect(() => {
+    if (!sessionRef.current || !user) return;
+
+    const intervalId = setInterval(async () => {
+      const sessionDuration = getTotalSessionDuration();
+      if (sessionDuration >= 30) { // Only analyze if we have 30+ seconds of data
+        try {
+          setIsGeneratingInsights(true);
+          // Let sessionInsightAnalyzer handle all the data collection and analysis
+          const insights = await analyzeSessionInsights(
+            user.uid,
+            sessionRef.current.sessionId
+          );
+          // Let sessionNarrator handle the narration generation
+          const narration = await narrateSessionInsights(insights);
+          setNarratedInsights(narration);
+        } catch (error) {
+          console.error('Failed to generate insights:', error);
+        } finally {
+          setIsGeneratingInsights(false);
+        }
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, [user]);
+
+  // Add function to calculate total session duration
+  const getTotalSessionDuration = useCallback(() => {
+    if (!sessionRef.current) return 0;
+    
+    return sessionRef.current.videosWatched.reduce(
+      (total, video) => total + video.watchDuration,
+      0
+    );
+  }, []);
 
   // Loading States
   if (isLoading || error || videos.length === 0) {
@@ -620,6 +816,12 @@ export const FeedScreen = () => {
       
       <NavigationButtons />
       
+      <InsightPill
+        narration={narratedInsights}
+        isLoading={isGeneratingInsights}
+        sessionDuration={getTotalSessionDuration()}
+      />
+
       <FlatList
         data={videos}
         renderItem={renderItem}

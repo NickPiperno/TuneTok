@@ -77,13 +77,17 @@ export const PlaylistDetailsScreen: React.FC = () => {
                 );
                 const videoResults = await Promise.all(videoPromises);
                 // Filter out any errors and keep only valid videos
-                const validVideos = videoResults.filter((result: VideoMetadata | VideoError): result is VideoMetadata => 
-                    !('code' in result)
-                );
+                const validVideos = videoResults.filter((result: Pick<Video, 'title' | 'id' | 'artist'> | VideoError): result is VideoMetadata => {
+                    if ('code' in result) {
+                        return false;
+                    }
+                    // Check if result has required VideoMetadata properties
+                    return 'likes' in result && 'comments' in result && 'shares' in result;
+                });
                 
                 setVideos(validVideos);
                 // If we got any errors, show a warning
-                const errors = videoResults.filter((result: VideoMetadata | VideoError): result is VideoError => 'code' in result);
+                const errors = videoResults.filter((result: Pick<Video, 'title' | 'id' | 'artist'> | VideoError): result is VideoError => 'code' in result);
                 if (errors.length > 0) {
                     setError(`Failed to load ${errors.length} video(s). They may have been deleted or made private.`);
                 }
