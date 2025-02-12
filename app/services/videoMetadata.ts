@@ -152,6 +152,59 @@ const userPrefsCache: Map<string, QueryCache> = new Map();
 let activeQueries = new Set();
 const MAX_CONCURRENT_QUERIES = 3;
 
+// Add VideoScore interface
+interface VideoScore {
+  video: VideoMetadata;
+  score: number;
+}
+
+// Add scoring constants
+const SCORE_WEIGHTS = {
+  GENRE_MATCH: 3,
+  MOOD_MATCH: 2
+} as const;
+
+/**
+ * Calculate simple score based on genre and mood matches
+ */
+const calculateSimpleScore = (
+  video: VideoMetadata,
+  userPrefs: UserPreferences
+): number => {
+  let score = 0;
+
+  // Genre match (3 points)
+  if (video.genre && userPrefs.preferredGenres?.includes(video.genre)) {
+    score += SCORE_WEIGHTS.GENRE_MATCH;
+  }
+
+  // Mood match (2 points)
+  if (video.mood && userPrefs.preferredMoods?.includes(video.mood)) {
+    score += SCORE_WEIGHTS.MOOD_MATCH;
+  }
+
+  return score;
+};
+
+/**
+ * Personalize video order based on user preferences
+ */
+const personalizeVideoOrder = (
+  videos: VideoMetadata[],
+  userPrefs: UserPreferences
+): VideoMetadata[] => {
+  // Calculate scores for each video
+  const scoredVideos: VideoScore[] = videos.map(video => ({
+    video,
+    score: calculateSimpleScore(video, userPrefs)
+  }));
+
+  // Sort by score (descending) and extract just the videos
+  return scoredVideos
+    .sort((a, b) => b.score - a.score)
+    .map(({ video }) => video);
+};
+
 /**
  * Records a user interaction with a video
  * @param interaction The interaction details to record
@@ -206,7 +259,8 @@ export const updateUserSession = async (
  */
 export const fetchVideoMetadata = async (
   userId: string,
-  pageSize: number = 10
+  pageSize: number = 10,
+  lastVideoTimestamp?: FirestoreTimestamp
 ): Promise<VideoMetadata[] | VideoError> => {
   try {
     // Log authentication state and database config
@@ -224,16 +278,6 @@ export const fetchVideoMetadata = async (
       databaseId: 'tunetok-correct-db',
       collection: 'videoMetadata'
     });
-
-    // Check cache first
-    const cacheKey = `${userId}_${pageSize}`;
-    const cachedData = videoCache.get(cacheKey);
-    const now = Date.now();
-
-    if (cachedData && (now - cachedData.timestamp) < CACHE_DURATION) {
-      console.log('🗄️ Returning cached data');
-      return cachedData.data;
-    }
 
     // Check if we can make a new query
     if (activeQueries.size >= MAX_CONCURRENT_QUERIES) {
@@ -254,13 +298,15 @@ export const fetchVideoMetadata = async (
         return userPrefs;
       }
 
-      // Build optimized query
+      // Build optimized query with pagination
       console.log('🔧 Building query with preferences:', {
         preferredGenres: userPrefs.preferredGenres,
-        preferredLanguage: userPrefs.preferredLanguage
+        preferredLanguage: userPrefs.preferredLanguage,
+        pageSize,
+        hasLastVideo: !!lastVideoTimestamp
       });
 
-      const baseQuery = buildOptimizedQuery(userPrefs, pageSize);
+      const baseQuery = buildOptimizedQuery(userPrefs, pageSize, lastVideoTimestamp);
       
       // Track this query
       const queryId = Math.random().toString(36).substring(7);
@@ -270,33 +316,24 @@ export const fetchVideoMetadata = async (
         console.log('🚀 Executing query:', { 
           queryId,
           filters: baseQuery,
-          path: 'videoMetadata'
+          path: 'videoMetadata',
+          pageSize,
+          hasLastVideo: !!lastVideoTimestamp
         });
 
         // Execute query with batching
         const videos = await executeBatchedQuery(baseQuery);
-        console.log('✅ Query results:', { 
-          count: videos.length,
-          firstVideoId: videos[0]?.id,
-          queryId,
-          sampleData: videos[0] ? {
-            uploadDate: videos[0].uploadDate,
-            title: videos[0].title
-          } : null
-        });
-        
-        // Cache results
-        videoCache.set(cacheKey, {
-          timestamp: now,
-          data: videos
+
+        // Apply personalization
+        const personalizedVideos = personalizeVideoOrder(videos, userPrefs);
+
+        console.log('✨ Applied personalization:', { 
+          originalOrder: videos.map(v => v.id),
+          personalizedOrder: personalizedVideos.map(v => v.id),
+          queryId
         });
 
-        // Only prefetch if we have capacity
-        if (videos.length <= PREFETCH_THRESHOLD && activeQueries.size < MAX_CONCURRENT_QUERIES) {
-          prefetchNextBatch(userId, pageSize, videos[videos.length - 1]);
-        }
-
-        return videos;
+        return personalizedVideos;
       } catch (error: any) {
         console.error('❌ Query execution error:', {
           code: error.code,
@@ -373,31 +410,30 @@ const getCachedUserPreferences = async (
  */
 const buildOptimizedQuery = (
   userPrefs: UserPreferences,
-  pageSize: number
+  pageSize: number,
+  lastVideoTimestamp?: FirestoreTimestamp
 ) => {
-  const queryConstraints: QueryConstraint[] = [];
+  const queryRef = collection(db, 'videoMetadata');
   
-  // Composite index for frequently accessed fields
-  if (userPrefs.preferredGenres?.length) {
-    queryConstraints.push(where('genre', 'in', userPrefs.preferredGenres));
+  // Build query constraints
+  const queryConstraints: QueryConstraint[] = [
+    orderBy('uploadDate', 'desc'),
+    limit(pageSize)
+  ];
+
+  // Add pagination if we have a last video
+  if (lastVideoTimestamp) {
+    queryConstraints.push(where('uploadDate', '<', lastVideoTimestamp));
   }
 
-  // Time-based optimization
-  const timeCategory = getTimeCategory(new Date().getHours());
-  if (userPrefs.preferredTimeOfDay === timeCategory) {
-    queryConstraints.push(where('mood', '==', getMoodForTimeOfDay(timeCategory)));
-  }
+  console.log('📊 Building query:', {
+    pageSize,
+    hasLastVideo: !!lastVideoTimestamp,
+    preferredGenres: userPrefs.preferredGenres,
+    preferredLanguage: userPrefs.preferredLanguage
+  });
 
-  // Language/Region optimization
-  if (userPrefs.preferredLanguage) {
-    queryConstraints.push(where('language', '==', userPrefs.preferredLanguage));
-  }
-
-  // Sort by upload date
-  queryConstraints.push(orderBy('uploadDate', 'desc'));
-  queryConstraints.push(limit(Math.min(pageSize * 2, MAX_BATCH_SIZE)));
-
-  return query(collection(db, 'videoMetadata'), ...queryConstraints);
+  return query(queryRef, ...queryConstraints);
 };
 
 /**
@@ -481,188 +517,6 @@ const ENGAGEMENT_WEIGHTS = {
   likes: 0.2,
   comments: 0.2,
   shares: 0.2,
-};
-
-/**
- * Calculates personalization score for videos based on user preferences
- */
-const personalizeVideoOrder = async (
-  videos: VideoMetadata[],
-  userPrefs: UserPreferences
-): Promise<VideoMetadata[]> => {
-  try {
-    // Get user's watch history and liked videos
-    const watchHistory = new Set(userPrefs.watchHistory || []);
-    const likedVideos = new Set(userPrefs.likedVideos || []);
-    
-    // Get user's recent interactions for better recommendations
-    const recentInteractions = await getRecentUserInteractions(userPrefs.userId);
-    
-    // Calculate content preferences based on recent interactions
-    const contentPreferences = await calculateContentPreferences(recentInteractions);
-    
-    // Score and sort videos
-    const scoredVideos = await Promise.all(videos.map(async video => {
-      let score = 0;
-
-      // 1. Basic Preference Matching (30% of total score)
-      score += calculatePreferenceScore(video, userPrefs) * 0.3;
-
-      // 2. Content-Based Similarity (30% of total score)
-      score += calculateContentSimilarity(video, contentPreferences) * 0.3;
-
-      // 3. Engagement and Watch Patterns (20% of total score)
-      score += calculateEngagementScore(video) * 0.2;
-
-      // 4. Temporal and Contextual Factors (20% of total score)
-      score += calculateContextualScore(video, userPrefs) * 0.2;
-
-      return { ...video, _score: score };
-    }));
-
-    // Sort by score (descending) and remove score from output
-    return scoredVideos
-      .sort((a, b) => (b._score || 0) - (a._score || 0))
-      .map(({ _score, ...video }) => video);
-  } catch (error) {
-    console.error('Error in personalization algorithm:', error);
-    // Fallback to basic sorting if personalization fails
-    return videos.sort((a, b) => b.uploadDate.toDate().getTime() - a.uploadDate.toDate().getTime());
-  }
-};
-
-/**
- * Calculates score based on user's explicit preferences
- */
-const calculatePreferenceScore = (video: VideoMetadata, userPrefs: UserPreferences): number => {
-  let score = 0;
-
-  // Genre preference (0-3)
-  if (userPrefs.preferredGenres?.includes(video.genre || '')) {
-    score += 3;
-  }
-
-  // Mood preference (0-2)
-  if (userPrefs.preferredMoods?.includes(video.mood || '')) {
-    score += 2;
-  }
-
-  // Artist preference (0-4)
-  if (userPrefs.preferredArtists?.includes(video.artist)) {
-    score += 4;
-  }
-
-  // Normalize to 0-1 range
-  return score / 9;
-};
-
-/**
- * Calculates content similarity based on audio features
- */
-const calculateContentSimilarity = (
-  video: VideoMetadata,
-  preferences: ContentPreferences
-): number => {
-  let similarity = 0;
-
-  // Genre similarity
-  if (video.genre === preferences.dominantGenre) {
-    similarity += SIMILARITY_WEIGHTS.genre;
-  }
-
-  // Mood similarity
-  if (video.mood === preferences.dominantMood) {
-    similarity += SIMILARITY_WEIGHTS.mood;
-  }
-
-  // Audio features similarity
-  if (video.videoAudioFeatures && preferences.averageAudioFeatures) {
-    const audioSimilarity = calculateAudioSimilarity(
-      video.videoAudioFeatures,
-      preferences.averageAudioFeatures
-    );
-    similarity += audioSimilarity * SIMILARITY_WEIGHTS.audioFeatures;
-  }
-
-  return similarity;
-};
-
-/**
- * Calculates engagement score based on video metrics and user patterns
- */
-const calculateEngagementScore = (video: VideoMetadata): number => {
-  let score = 0;
-
-  // Completion rate (0-0.4)
-  score += (video.completionRate / 100) * ENGAGEMENT_WEIGHTS.completionRate;
-
-  // Engagement metrics (0-0.6)
-  const totalEngagement = video.likes + video.comments + video.shares;
-  const normalizedEngagement = Math.min(totalEngagement / video.views, 1);
-  
-  score += normalizedEngagement * (
-    ENGAGEMENT_WEIGHTS.likes +
-    ENGAGEMENT_WEIGHTS.comments +
-    ENGAGEMENT_WEIGHTS.shares
-  );
-
-  return score;
-};
-
-/**
- * Calculates contextual relevance score
- */
-const calculateContextualScore = (
-  video: VideoMetadata,
-  userPrefs: UserPreferences
-): number => {
-  let score = 0;
-
-  // Time of day relevance (0-0.3)
-  const timeCategory = getTimeCategory(new Date().getHours());
-  if (timeCategory === userPrefs.preferredTimeOfDay) {
-    score += 0.3;
-  }
-
-  // Recency boost (0-0.3)
-  const hoursOld = (Date.now() - video.uploadDate.toDate().getTime()) / (1000 * 60 * 60);
-  if (hoursOld <= 24) {
-    score += 0.3 * (1 - hoursOld / 24);
-  }
-
-  // Language/Region match (0-0.2)
-  if (video.language === userPrefs.preferredLanguage) {
-    score += 0.2;
-  }
-
-  // Device optimization (0-0.2)
-  if (userPrefs.preferredDeviceType === 'mobile' && video.duration <= 60) {
-    score += 0.2;
-  }
-
-  return score;
-};
-
-/**
- * Fetches recent user interactions for better recommendations
- */
-const getRecentUserInteractions = async (
-  userId: string,
-  limitCount: number = 50
-): Promise<UserInteraction[]> => {
-  const interactionsRef = collection(db, 'interactions');
-  const q = query(
-    interactionsRef,
-    where('userId', '==', userId),
-    orderBy('timestamp', 'desc'),
-    limit(limitCount as number)
-  );
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
-    ...doc.data(),
-    timestamp: doc.data().timestamp.toDate()
-  })) as UserInteraction[];
 };
 
 /**

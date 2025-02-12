@@ -17,13 +17,36 @@ export const getArtistRecommendations = async (
     limit: number = 5
 ): Promise<ArtistRecommendation[]> => {
     try {
+        console.log('Debug - Artist Recommendations Input:', {
+            receivedGenres: preferredGenres,
+            receivedMoods: preferredMoods,
+            validGenresList: GENRES.map(g => g.toLowerCase()),
+            validMoodsList: MOODS.map(m => m.toLowerCase())
+        });
+
         // Validate inputs against known genres and moods
-        const validGenres = preferredGenres.filter(genre => 
-            GENRES.map(g => g.toLowerCase()).includes(genre.toLowerCase())
-        );
-        const validMoods = preferredMoods.filter(mood => 
-            MOODS.map(m => m.toLowerCase()).includes(mood.toLowerCase())
-        );
+        const validGenres = preferredGenres.filter(genre => {
+            const isValid = GENRES.map(g => g.toLowerCase()).includes(genre.toLowerCase());
+            if (!isValid) {
+                console.log(`Invalid genre found: ${genre}`);
+            }
+            return isValid;
+        });
+        
+        const validMoods = preferredMoods.filter(mood => {
+            const isValid = MOODS.map(m => m.toLowerCase()).includes(mood.toLowerCase());
+            if (!isValid) {
+                console.log(`Invalid mood found: ${mood}`);
+            }
+            return isValid;
+        });
+
+        console.log('Debug - Validation Results:', {
+            validGenresCount: validGenres.length,
+            validMoodsCount: validMoods.length,
+            validGenres,
+            validMoods
+        });
 
         if (validGenres.length === 0 || validMoods.length === 0) {
             throw new Error('No valid genres or moods provided');

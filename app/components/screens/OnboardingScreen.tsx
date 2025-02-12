@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getArtistRecommendations } from '../../services/ai/artistRecommendation';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ArtistRecommendation } from '../../services/ai/artistRecommendation';
+import { GENRES, MOODS } from '../../constants/musicPreferences';
 
 type RootStackParamList = {
   Onboarding: undefined;
@@ -27,10 +28,6 @@ type RootStackParamList = {
 type OnboardingScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 };
-
-// Predefined options for user selection
-const GENRES = ['pop', 'hip-hop', 'rock', 'electronic', 'r&b', 'jazz', 'classical', 'country'];
-const MOODS = ['energetic', 'chill', 'happy', 'relaxed', 'focused', 'party', 'workout', 'study'];
 
 // Theme-compliant colors
 const COLORS = {
@@ -58,18 +55,20 @@ export const OnboardingScreen = ({ navigation }: OnboardingScreenProps) => {
   const [selectedArtists, setSelectedArtists] = useState<Set<string>>(new Set());
 
   const toggleGenre = (genre: string) => {
+    const normalizedGenre = genre.toLowerCase();
     setSelectedGenres(prev => 
-      prev.includes(genre) 
-        ? prev.filter(g => g !== genre)
-        : [...prev, genre]
+      prev.includes(normalizedGenre) 
+        ? prev.filter(g => g !== normalizedGenre)
+        : [...prev, normalizedGenre]
     );
   };
 
   const toggleMood = (mood: string) => {
+    const normalizedMood = mood.toLowerCase();
     setSelectedMoods(prev => 
-      prev.includes(mood) 
-        ? prev.filter(m => m !== mood)
-        : [...prev, mood]
+      prev.includes(normalizedMood) 
+        ? prev.filter(m => m !== normalizedMood)
+        : [...prev, normalizedMood]
     );
   };
 
@@ -110,6 +109,15 @@ export const OnboardingScreen = ({ navigation }: OnboardingScreenProps) => {
 
     try {
       // Get AI recommendations first
+      console.log('Debug - Sending to getArtistRecommendations:', {
+        genres: selectedGenres.map(g => g.toLowerCase()),
+        moods: selectedMoods.map(m => m.toLowerCase()),
+        rawGenres: selectedGenres,
+        rawMoods: selectedMoods,
+        GENRES,
+        MOODS
+      });
+      
       const aiRecommendations = await getArtistRecommendations(
         selectedGenres.map(g => g.toLowerCase()),
         selectedMoods.map(m => m.toLowerCase())
@@ -285,15 +293,15 @@ export const OnboardingScreen = ({ navigation }: OnboardingScreenProps) => {
                 key={genre}
                 style={[
                   styles.option,
-                  selectedGenres.includes(genre) && styles.selectedOption
+                  selectedGenres.includes(genre.toLowerCase()) && styles.selectedOption
                 ]}
                 onPress={() => toggleGenre(genre)}
               >
                 <Text style={[
                   styles.optionText,
-                  selectedGenres.includes(genre) && styles.selectedOptionText
+                  selectedGenres.includes(genre.toLowerCase()) && styles.selectedOptionText
                 ]}>
-                  {genre.charAt(0).toUpperCase() + genre.slice(1)}
+                  {genre}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -309,15 +317,15 @@ export const OnboardingScreen = ({ navigation }: OnboardingScreenProps) => {
                 key={mood}
                 style={[
                   styles.option,
-                  selectedMoods.includes(mood) && styles.selectedOption
+                  selectedMoods.includes(mood.toLowerCase()) && styles.selectedOption
                 ]}
                 onPress={() => toggleMood(mood)}
               >
                 <Text style={[
                   styles.optionText,
-                  selectedMoods.includes(mood) && styles.selectedOptionText
+                  selectedMoods.includes(mood.toLowerCase()) && styles.selectedOptionText
                 ]}>
-                  {mood.charAt(0).toUpperCase() + mood.slice(1)}
+                  {mood}
                 </Text>
               </TouchableOpacity>
             ))}

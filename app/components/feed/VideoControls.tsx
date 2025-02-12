@@ -168,7 +168,8 @@ const styles = StyleSheet.create({
     right: 8,
     bottom: 150,
     alignItems: 'center',
-    zIndex: 1,
+    zIndex: 999,
+    elevation: 999,
   },
   button: {
     alignItems: 'center',

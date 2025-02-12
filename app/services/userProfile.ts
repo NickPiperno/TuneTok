@@ -1,5 +1,6 @@
 import { db } from '../config/firebase';
-import { doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove, getDoc, runTransaction } from 'firebase/firestore';
+import { Timestamp } from 'firebase/firestore';
 
 export type UserProfileError = {
   code: string;
@@ -25,17 +26,18 @@ export const followCreator = async (
   try {
     const userPrefsRef = doc(db, 'userPreferences', userId);
     
-    // Check if user exists
-    const userDoc = await getDoc(userPrefsRef);
-    if (!userDoc.exists()) {
-      return {
-        code: 'user/not-found',
-        message: 'User preferences not found'
-      };
-    }
+    // Use transaction to ensure atomic updates
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userPrefsRef);
+      if (!userDoc.exists()) {
+        throw new Error('User preferences not found');
+      }
 
-    await updateDoc(userPrefsRef, {
-      following: arrayUnion(artist)
+      // Update only the following array
+      transaction.update(userPrefsRef, {
+        following: arrayUnion(artist),
+        updatedAt: Timestamp.now()
+      });
     });
 
     return true;
@@ -59,17 +61,18 @@ export const unfollowCreator = async (
   try {
     const userPrefsRef = doc(db, 'userPreferences', userId);
     
-    // Check if user exists
-    const userDoc = await getDoc(userPrefsRef);
-    if (!userDoc.exists()) {
-      return {
-        code: 'user/not-found',
-        message: 'User preferences not found'
-      };
-    }
+    // Use transaction to ensure atomic updates
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userPrefsRef);
+      if (!userDoc.exists()) {
+        throw new Error('User preferences not found');
+      }
 
-    await updateDoc(userPrefsRef, {
-      following: arrayRemove(artist)
+      // Update only the following array
+      transaction.update(userPrefsRef, {
+        following: arrayRemove(artist),
+        updatedAt: Timestamp.now()
+      });
     });
 
     return true;

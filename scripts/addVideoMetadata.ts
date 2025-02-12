@@ -69,12 +69,74 @@ const bucket = getStorage().bucket();
 // Collection name constant
 const VIDEO_METADATA_COLLECTION = 'videoMetadata';
 
-// Predefined options for metadata
-const GENRES = ['pop', 'hip-hop', 'rock', 'electronic', 'r&b', 'jazz', 'classical', 'country'];
-const MOODS = ['relaxed', 'energetic', 'chill', 'happy', 'focused', 'party', 'workout', 'study'];
-const LANGUAGES = ['en', 'es', 'fr', 'de', 'ja', 'ko', 'zh'];
-const REGIONS = ['US', 'EU', 'AS', 'Global'];
+// Expanded predefined options for metadata
+const GENRES = ['pop', 'hip-hop', 'rock', 'electronic', 'r&b', 'jazz', 'classical', 'country', 'indie', 'folk'];
+const MOODS = ['relaxed', 'energetic', 'chill', 'happy', 'focused', 'party', 'workout', 'study', 'romantic', 'melancholic'];
+const LANGUAGES = ['en', 'es', 'fr', 'de', 'ja', 'ko', 'zh', 'hi', 'pt', 'ru'];
+const REGIONS = ['US', 'EU', 'AS', 'Global', 'UK', 'JP', 'KR', 'BR', 'IN'];
 const MUSICAL_KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Sample artist names and title templates for variety
+const ARTISTS = [
+  'Luna Wave', 'Digital Pulse', 'Urban Echo', 'Crystal Harmony', 
+  'Neon Dreams', 'Future Beats', 'Sonic Wave', 'Electric Soul',
+  'Midnight Groove', 'Solar Rhythm'
+];
+
+const TITLE_TEMPLATES = [
+  'Journey Through {mood}',
+  '{genre} Vibes',
+  'Late Night {genre}',
+  '{mood} Sessions',
+  'Urban {genre} Mix',
+  '{mood} Beats',
+  'Deep {genre} Experience',
+  '{mood} Waves',
+  'Pure {genre} Energy',
+  'Modern {genre} Flow'
+];
+
+// Helper function to get random item from array
+const getRandomItem = <T>(array: T[]): T => {
+  return array[Math.floor(Math.random() * array.length)];
+};
+
+// Generate unique metadata for each video
+const generateUniqueMetadata = (filename: string): VideoMetadataInput => {
+  const genre = getRandomItem(GENRES);
+  const mood = getRandomItem(MOODS);
+  const artist = getRandomItem(ARTISTS);
+  
+  // Generate title by replacing placeholders in template
+  const titleTemplate = getRandomItem(TITLE_TEMPLATES);
+  const title = titleTemplate
+    .replace('{genre}', genre.charAt(0).toUpperCase() + genre.slice(1))
+    .replace('{mood}', mood.charAt(0).toUpperCase() + mood.slice(1));
+
+  // Generate random but reasonable values for audio features
+  const tempo = Math.floor(Math.random() * (180 - 70) + 70); // Between 70-180 BPM
+  const energy = Number((Math.random() * 0.6 + 0.2).toFixed(2)); // Between 0.2-0.8
+  const danceability = Number((Math.random() * 0.6 + 0.2).toFixed(2)); // Between 0.2-0.8
+
+  return {
+    storageId: `videos/${filename}`,
+    title,
+    artist,
+    description: `A ${mood} ${genre} track by ${artist}`,
+    tags: [genre, mood, artist.toLowerCase().split(' ')[0], 'new'],
+    genre,
+    mood,
+    duration: 0, // Will be updated with actual duration
+    language: getRandomItem(LANGUAGES),
+    region: getRandomItem(REGIONS),
+    videoAudioFeatures: {
+      tempo,
+      key: getRandomItem(MUSICAL_KEYS),
+      energy,
+      danceability
+    }
+  };
+};
 
 // Use Partial<VideoMetadata> for input since some fields will be initialized
 type VideoMetadataInput = Omit<VideoMetadata, 'id' | 'likes' | 'comments' | 'shares' | 'views' | 'averageWatchDuration' | 'completionRate' | 'watchTimeDistribution' | 'uploadDate'> & {
@@ -108,6 +170,17 @@ const addVideoMetadata = async (
     const storageId = file.name;
     // Remove 'videos/' prefix and file extension
     const videoId = file.name.replace('videos/', '').split('.')[0];
+
+    console.log(`Processing video ID: ${videoId}`);
+    
+    // Check if metadata already exists
+    const docRef = db.collection(VIDEO_METADATA_COLLECTION).doc(videoId);
+    const doc = await docRef.get();
+    
+    if (doc.exists) {
+      console.log(`⏭️ Skipping ${videoId} - metadata already exists`);
+      return;
+    }
 
     console.log(`Adding metadata for video ID: ${videoId}`);
     console.log(`Storage ID: ${storageId}`);
@@ -145,13 +218,13 @@ const addVideoMetadata = async (
       uploadDate: admin.firestore.Timestamp.fromDate(new Date(fileMetadata.timeCreated)) as FirestoreTimestamp
     };
 
-    console.log('Attempting to save document with data:', JSON.stringify(videoMetadata, null, 2));
+    console.log('Saving document with data:', JSON.stringify(videoMetadata, null, 2));
 
-    // Save to Firestore directly without checking existence
-    await db.collection(VIDEO_METADATA_COLLECTION).doc(videoId).create(videoMetadata);
+    // Save to Firestore
+    await docRef.create(videoMetadata);
     console.log(`✅ Added metadata for video: ${metadata.title}`);
   } catch (error) {
-    console.error(`❌ Failed to add metadata for video: ${metadata.title}`, error);
+    console.error(`❌ Error processing video: ${metadata.title}`, error);
     if (error instanceof Error) {
       console.error('Error details:', {
         name: error.name,
@@ -160,7 +233,7 @@ const addVideoMetadata = async (
         code: (error as any).code
       });
     }
-    throw error;
+    // Don't throw error to allow processing to continue for other videos
   }
 };
 
@@ -173,49 +246,45 @@ const processVideos = async () => {
     const [files] = await bucket.getFiles({ prefix: 'videos/' });
 
     console.log(`Found ${files.length} videos in storage`);
+    let processedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
 
     // Process each video
     for (const file of files) {
       // Skip if not a video file
       if (!file.name.match(/\.(mp4|mov|avi|wmv)$/i)) {
         console.log(`Skipping non-video file: ${file.name}`);
+        skippedCount++;
         continue;
       }
       
       // Extract filename without extension and 'videos/' prefix
-      const filename = file.name.replace('videos/', '').split('.')[0];
+      const filename = file.name.replace('videos/', '');
       
       if (!filename) {
         console.log(`Skipping file with no name: ${file.name}`);
+        skippedCount++;
         continue;
       }
       
-      console.log(`Processing video: ${filename}`);
+      console.log(`\nProcessing video: ${filename}`);
       
-      // Example metadata - customize for each video
-      const metadata: VideoMetadataInput = {
-        storageId: file.name,
-        title: "Summer Vibes",
-        artist: "DJ Smith",
-        description: "A relaxing summer track",
-        tags: ["summer", "chill", "new"],
-        genre: "pop",
-        mood: "relaxed",
-        duration: 0, // You would need to get actual duration
-        language: "en",
-        region: "US",
-        videoAudioFeatures: {
-          tempo: 120,      // Example BPM
-          key: "C",        // Example key
-          energy: 0.6,     // Moderate energy level
-          danceability: 0.7 // Good for dancing
-        }
-      };
-
-      await addVideoMetadata(file, metadata);
+      try {
+        // Generate unique metadata for this video
+        const metadata = generateUniqueMetadata(filename);
+        await addVideoMetadata(file, metadata);
+        processedCount++;
+      } catch (error) {
+        console.error(`Failed to process ${filename}:`, error);
+        errorCount++;
+      }
     }
 
-    console.log('✨ Completed processing all videos');
+    console.log('\n✨ Processing completed:');
+    console.log(`- Successfully processed: ${processedCount} videos`);
+    console.log(`- Skipped: ${skippedCount} files`);
+    console.log(`- Errors: ${errorCount} videos`);
   } catch (error) {
     console.error('Failed to process videos:', error);
     throw error;

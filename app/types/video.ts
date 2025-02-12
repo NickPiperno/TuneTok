@@ -14,6 +14,7 @@ export interface Video {
     shares: number;
     views: number;
     uploadDate: FirestoreTimestamp;
+    isWrapped?: boolean;
 }
 
 export interface VideoError {

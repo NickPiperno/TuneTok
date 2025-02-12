@@ -44,6 +44,7 @@ interface VideoPlayerProps {
   onError?: (error: string) => void;
   onLoad?: () => void;
   isFocused: boolean;
+  onPlaybackStateChange?: (isPlaying: boolean) => void;
 }
 
 const VideoPlayerComponent: React.FC<VideoPlayerProps> = ({
@@ -51,25 +52,25 @@ const VideoPlayerComponent: React.FC<VideoPlayerProps> = ({
   onError,
   onLoad,
   isFocused,
+  onPlaybackStateChange,
 }) => {
   // Create video player instance
   const player = useVideoPlayer(uri, player => {
     player.loop = true;
-    if (isFocused) {
-      player.play();
-    }
   });
 
   // Handle focus changes
   useEffect(() => {
     if (isFocused) {
       player.play();
+      onPlaybackStateChange?.(true);
     } else {
       player.pause();
+      onPlaybackStateChange?.(false);
     }
-  }, [isFocused, player]);
+  }, [isFocused, player, onPlaybackStateChange]);
 
-  // Handle errors
+  // Handle errors and loading
   useEffect(() => {
     const subscription = player.addListener('statusChange', ({ status, error }) => {
       if (status === 'error' && error) {

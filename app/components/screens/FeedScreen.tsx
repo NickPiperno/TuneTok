@@ -8,6 +8,7 @@ import {
   Animated,
   Dimensions,
   FlatList,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
@@ -25,7 +26,7 @@ import {
   VideoInfo,
 } from '../feed';
 import { useComments } from '../../hooks/useComments';
-import { doc, setDoc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, arrayUnion, arrayRemove, getDoc, increment } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { FollowButton } from '../common/FollowButton';
 import { SaveToPlaylistModal } from '../common/SaveToPlaylistModal';
@@ -63,7 +64,7 @@ export const FeedScreen = () => {
 
   // Constants
   const PAGE_SIZE = 10;
-  const PRELOAD_THRESHOLD = 2;
+  const PRELOAD_THRESHOLD = 4;
 
   // Add video validation helper
   const validateVideo = useCallback((video: Video): boolean => {
@@ -88,7 +89,12 @@ export const FeedScreen = () => {
         throw new Error('No internet connection');
       }
 
-      const result = await fetchVideos(pageSize);
+      // Get the last video's timestamp for pagination
+      const lastVideoTimestamp = isLoadingMore && videos.length > 0 
+        ? videos[videos.length - 1].uploadDate 
+        : undefined;
+
+      const result = await fetchVideos(pageSize, lastVideoTimestamp);
       if ('code' in result) {
         throw new Error(result.message);
       }
@@ -96,35 +102,70 @@ export const FeedScreen = () => {
       // Validate videos before setting
       const validVideos = result.filter(validateVideo);
       
-      if (validVideos.length === 0) {
+      if (validVideos.length === 0 && isLoadingMore) {
+        // If we're loading more and get no videos, we've reached the end
+        // Load the first batch again
+        console.log('🔄 FeedScreen: Reached end of videos, wrapping to start');
+        const firstBatch = await fetchVideos(pageSize);
+        if ('code' in firstBatch) {
+          throw new Error(firstBatch.message);
+        }
+        // Add wrapped flag and unique keys to wrapped videos
+        const wrappedVideos = firstBatch.filter(validateVideo).map(video => ({
+          ...video,
+          id: `${video.id}_wrapped_${Date.now()}`, // Make the ID unique
+          isWrapped: true // Add flag to identify wrapped videos
+        }));
+        validVideos.push(...wrappedVideos);
+      } else if (validVideos.length === 0) {
         throw new Error('No valid videos available');
       }
 
-      console.log('Fetched videos:', validVideos.map(v => ({
-        id: v.id,
-        url: v.url,
-        isValidUrl: Boolean(v.url && v.url.startsWith('http'))
-      })));
+      console.log('📼 FeedScreen: Fetched videos:', {
+        newVideosCount: validVideos.length,
+        isLoadingMore,
+        currentCount: videos.length,
+        firstNewVideoId: validVideos[0]?.id,
+        lastNewVideoId: validVideos[validVideos.length - 1]?.id,
+        isWrapping: validVideos.some(v => v.isWrapped)
+      });
 
       setVideos(prev => {
         if (isLoadingMore) {
+          // Create a Set of existing video IDs for O(1) lookup
           const existingIds = new Set(prev.map(v => v.id));
-          const newVideos = validVideos.filter(v => !existingIds.has(v.id));
-          return [...prev, ...newVideos];
+          // Filter out any duplicates from the new videos
+          const newUniqueVideos = validVideos.filter(v => !existingIds.has(v.id));
+          
+          console.log('🔄 FeedScreen: Appending videos:', {
+            existingCount: prev.length,
+            newUniqueCount: newUniqueVideos.length,
+            totalAfterMerge: prev.length + newUniqueVideos.length,
+            hasWrappedVideos: newUniqueVideos.some(v => v.isWrapped)
+          });
+          
+          // Only append if we have new unique videos
+          if (newUniqueVideos.length > 0) {
+            return [...prev, ...newUniqueVideos];
+          }
+          return prev;
         }
         return validVideos;
       });
       
       setError(null);
     } catch (error: any) {
-      setError(error.message || 'Failed to load videos');
-      Alert.alert('Error', error.message || 'Failed to load videos');
+      // Only show errors for network or auth issues, not for end of content
+      if (error.message !== 'No valid videos available') {
+        setError(error.message || 'Failed to load videos');
+        Alert.alert('Error', error.message || 'Failed to load videos');
+      }
     } finally {
       loadingRef.current = false;
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, [user, validateVideo]);
+  }, [user, validateVideo, videos]);
 
   // Handle video errors
   const handleVideoError = useCallback((error: string) => {
@@ -153,7 +194,7 @@ export const FeedScreen = () => {
 
   // Check if we should load more
   const shouldLoadMore = useCallback(() => 
-    videos.length - currentVideoIndex <= PRELOAD_THRESHOLD + 1,
+    videos.length - currentVideoIndex <= PRELOAD_THRESHOLD,
     [videos.length, currentVideoIndex]
   );
 
@@ -188,30 +229,50 @@ export const FeedScreen = () => {
   const [showControls, setShowControls] = useState(true);
   const [followedArtists, setFollowedArtists] = useState<Set<string>>(new Set());
   const [showSaveToPlaylist, setShowSaveToPlaylist] = useState(false);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(true);
+  const [sharedVideos, setSharedVideos] = useState<Set<string>>(new Set());
 
-  // Load followed artists on mount
+  // Add logging for playback state changes
+  const handlePlaybackStateChange = useCallback((isPlaying: boolean) => {
+    console.log('🎬 Video playback state changed:', { 
+      isPlaying, 
+      currentVideoId: currentVideo?.id,
+      currentVideoIndex 
+    });
+    setIsVideoPlaying(isPlaying);
+  }, [currentVideo?.id, currentVideoIndex]);
+
+  // Load user preferences on mount
   useEffect(() => {
-    const loadFollowedArtists = async () => {
+    const loadUserPreferences = async () => {
       if (!user) return;
       
       try {
-        console.log('🎯 Loading followed artists for user:', user.uid);
+        console.log('🎯 Loading user preferences for:', user.uid);
         const userPrefsRef = doc(db, 'userPreferences', user.uid);
         const userPrefsDoc = await getDoc(userPrefsRef);
         
         if (userPrefsDoc.exists()) {
           const prefs = userPrefsDoc.data();
-          console.log('📋 User preferences loaded:', { following: prefs.following });
+          // Set liked videos
+          if (prefs.likedVideos) {
+            setLikedVideos(new Set(prefs.likedVideos));
+          }
+          // Set shared videos
+          if (prefs.sharedVideos) {
+            setSharedVideos(new Set(prefs.sharedVideos));
+          }
+          // Set followed artists
           if (prefs.following) {
             setFollowedArtists(new Set(prefs.following));
           }
         }
       } catch (error) {
-        console.error('❌ Failed to load followed artists:', error);
+        console.error('❌ Failed to load user preferences:', error);
       }
     };
 
-    loadFollowedArtists();
+    loadUserPreferences();
   }, [user]);
 
   // Handle initial video from search
@@ -386,15 +447,94 @@ export const FeedScreen = () => {
     }
   };
 
-  const toggleControls = () => {
-    console.log('🔄 FeedScreen: Toggling controls visibility', { 
-      currentVisibility: showControls, 
-      newVisibility: !showControls 
-    });
-    setShowControls(!showControls);
+  const handleShare = async () => {
+    if (!user || !currentVideo) return;
+
+    try {
+      const isAlreadyShared = sharedVideos.has(currentVideo.id);
+      console.log('🔄 FeedScreen: Share initiated:', { 
+        videoId: currentVideo.id, 
+        isAlreadyShared,
+        currentShares: currentVideo.shares 
+      });
+      
+      // Store current playback state
+      const wasPlaying = isVideoPlaying;
+      
+      // 1. Prepare share content
+      const shareUrl = `https://tunetok.app/video/${currentVideo.id}`;
+      const shareOptions = {
+        title: `Check out this video on TuneTok!`,
+        message: `${currentVideo.title} by ${currentVideo.artist}\n\n${shareUrl}`,
+      };
+
+      // 2. Show share dialog
+      console.log('🔄 FeedScreen: Opening share dialog');
+      await Share.share(shareOptions);
+
+      // Only update share count and record interaction if this is the first share
+      if (!isAlreadyShared) {
+        console.log('🆕 FeedScreen: First time share, updating counts');
+        
+        // Update UI optimistically
+        setVideos(prevVideos => 
+          prevVideos.map(video => 
+            video.id === currentVideo.id
+              ? { ...video, shares: (video.shares || 0) + 1 }
+              : video
+          )
+        );
+
+        // Update shared videos set
+        const updatedSharedVideos = new Set(sharedVideos);
+        updatedSharedVideos.add(currentVideo.id);
+        setSharedVideos(updatedSharedVideos);
+
+        // Update Firebase
+        const videoRef = doc(db, 'videoMetadata', currentVideo.id);
+        const userPrefsRef = doc(db, 'userPreferences', user.uid);
+
+        Promise.all([
+          updateDoc(videoRef, {
+            shares: increment(1)
+          }),
+          updateDoc(userPrefsRef, {
+            sharedVideos: arrayUnion(currentVideo.id)
+          }),
+          recordInteraction({
+            userId: user.uid,
+            videoId: currentVideo.id,
+            watchDuration: 0,
+            watchPercentage: 0,
+            interactionType: 'share',
+            timestamp: new Date(),
+            genre: currentVideo.genre,
+            mood: currentVideo.mood
+          })
+        ]).catch(error => {
+          console.error('❌ FeedScreen: Error recording share:', error);
+        });
+      } else {
+        console.log('ℹ️ FeedScreen: Video already shared, skipping count update');
+      }
+
+      // Resume playback if it was playing before
+      if (wasPlaying) {
+        setIsVideoPlaying(true);
+      }
+    } catch (error) {
+      console.error('❌ FeedScreen: Error sharing video:', error);
+      Alert.alert('Error', 'Failed to share video');
+    }
   };
 
-  // Remove gesture-related code and animations
+  // Add this at the component level, before renderItem
+  const handleVideoPlaybackStateChange = useCallback((isPlaying: boolean, isFocused: boolean) => {
+    if (isFocused) {
+      handlePlaybackStateChange(isPlaying);
+    }
+  }, [handlePlaybackStateChange]);
+
   const renderItem = ({ item, index }: { item: Video; index: number }) => {
     const isFocused = currentVideoIndex === index;
     
@@ -411,12 +551,16 @@ export const FeedScreen = () => {
         <TouchableOpacity 
           activeOpacity={1} 
           style={styles.videoWrapper}
-          onPress={toggleControls}
+          onPress={() => {
+            if (isFocused) {
+              setIsVideoPlaying(prev => !prev);
+            }
+          }}
         >
           <VideoPlayer
             key={item.id}
             uri={item.url}
-            isFocused={isFocused}
+            isFocused={isFocused && isVideoPlaying}
             onError={(error) => {
               console.error('Video error for index', index, error);
               handleVideoError(error);
@@ -427,6 +571,7 @@ export const FeedScreen = () => {
                 videoId: item.id
               });
             }}
+            onPlaybackStateChange={(isPlaying) => handleVideoPlaybackStateChange(isPlaying, isFocused)}
           />
           {isFocused && <VideoInfo video={item} />}
         </TouchableOpacity>
@@ -446,6 +591,8 @@ export const FeedScreen = () => {
       
       if (typeof index === 'number') {
         setCurrentVideoIndex(index);
+        // Resume playback when a new video becomes viewable
+        setIsVideoPlaying(true);
       }
     }
   }, [videos]);
@@ -481,10 +628,10 @@ export const FeedScreen = () => {
         showsVerticalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
-        windowSize={3}
-        maxToRenderPerBatch={3}
-        initialNumToRender={2}
-        removeClippedSubviews={true}
+        windowSize={5}
+        maxToRenderPerBatch={4}
+        initialNumToRender={3}
+        removeClippedSubviews={false}
         getItemLayout={(_, index) => ({
           length: WINDOW_HEIGHT,
           offset: WINDOW_HEIGHT * index,
@@ -497,36 +644,52 @@ export const FeedScreen = () => {
         snapToAlignment="start"
         style={styles.list}
         onEndReached={() => {
+          console.log('📜 FeedScreen: onEndReached triggered', {
+            currentIndex: currentVideoIndex,
+            totalVideos: videos.length,
+            isLoadingMore,
+            shouldLoad: shouldLoadMore()
+          });
+          
           if (shouldLoadMore() && !isLoadingMore) {
+            console.log('🔄 FeedScreen: Loading more videos');
             loadVideos(PAGE_SIZE, true);
           }
         }}
-        onEndReachedThreshold={0.5}
+        onEndReachedThreshold={0.8}
+        ListFooterComponent={() => isLoadingMore ? (
+          <View style={styles.loadingMoreContainer}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        ) : null}
       />
 
-      <FeedVideoControls
-        visible={showControls}
-        onLike={() => {
-          if (currentVideo?.id) {
-            handleLike();
-          }
-        }}
-        onComment={handleOpenComments}
-        onShare={() => console.log('Share pressed')}
-        onFollow={() => {
-          if (currentVideo?.artist) {
-            handleFollowChange(!followedArtists.has(currentVideo.artist));
-          }
-        }}
-        onSave={() => setShowSaveToPlaylist(true)}
-        isSaved={false}
-        likes={currentVideo?.likes || 0}
-        comments={currentVideo?.comments || 0}
-        shares={currentVideo?.shares || 0}
-        isLiked={!!currentVideo?.id && likedVideos.has(currentVideo.id)}
-        isFollowed={!!currentVideo?.artist && followedArtists.has(currentVideo.artist)}
-        videoId={currentVideo?.id || ''}
-      />
+      {/* Always render controls for current video */}
+      {currentVideo && (
+        <FeedVideoControls
+          visible={true} // Always visible
+          onLike={() => {
+            if (currentVideo?.id) {
+              handleLike();
+            }
+          }}
+          onComment={handleOpenComments}
+          onShare={handleShare}
+          onFollow={() => {
+            if (currentVideo?.artist) {
+              handleFollowChange(!followedArtists.has(currentVideo.artist));
+            }
+          }}
+          onSave={() => setShowSaveToPlaylist(true)}
+          isSaved={false}
+          likes={currentVideo?.likes || 0}
+          comments={currentVideo?.comments || 0}
+          shares={currentVideo?.shares || 0}
+          isLiked={!!currentVideo?.id && likedVideos.has(currentVideo.id)}
+          isFollowed={!!currentVideo?.artist && followedArtists.has(currentVideo.artist)}
+          videoId={currentVideo?.id || ''}
+        />
+      )}
 
       <CommentsSheet
         isVisible={showComments}
@@ -562,9 +725,11 @@ const styles = StyleSheet.create({
   videoContainer: {
     height: WINDOW_HEIGHT,
     backgroundColor: '#000',
+    position: 'relative',
   },
   videoWrapper: {
     flex: 1,
+    position: 'relative',
   },
   loadingMoreContainer: {
     position: 'absolute',

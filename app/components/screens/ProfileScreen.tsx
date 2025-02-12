@@ -28,6 +28,7 @@ interface UserPreferences {
   avatarUrl?: string;
   updatedAt?: Date;
   following: string[];
+  preferredArtists: string[];
 }
 
 type RootStackParamList = {
@@ -47,7 +48,8 @@ export const ProfileScreen = () => {
   const [preferences, setPreferences] = useState<UserPreferences>({
     preferredGenres: [],
     preferredMoods: [],
-    following: []
+    following: [],
+    preferredArtists: []
   });
   const [editMode, setEditMode] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
@@ -73,6 +75,7 @@ export const ProfileScreen = () => {
           preferredGenres: (prefsData.preferredGenres || []).map((g: string) => g.toLowerCase()),
           preferredMoods: (prefsData.preferredMoods || []).map((m: string) => m.toLowerCase()),
           following: prefsData.following || [],
+          preferredArtists: prefsData.preferredArtists || [],
           avatarUrl: prefsData.avatarUrl,
           updatedAt: prefsData.updatedAt ? new Date(prefsData.updatedAt) : undefined
         };
@@ -317,12 +320,22 @@ export const ProfileScreen = () => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Following Artists</Text>
-          {preferences?.following?.length > 0 ? (
+          {(preferences?.following?.length > 0 || preferences?.preferredArtists?.length > 0) ? (
             <View style={styles.artistList}>
-              {preferences.following.map((artist: string) => (
-                <Text key={artist} style={styles.artistItem}>
-                  {artist}
-                </Text>
+              {preferences?.preferredArtists?.map((artist: string) => (
+                <View key={`preferred-${artist}`} style={styles.artistItemContainer}>
+                  <Text style={styles.artistItem}>
+                    {artist}
+                  </Text>
+                  <Text style={styles.artistBadge}>Preferred</Text>
+                </View>
+              ))}
+              {preferences?.following?.map((artist: string) => (
+                <View key={`following-${artist}`} style={styles.artistItemContainer}>
+                  <Text style={styles.artistItem}>
+                    {artist}
+                  </Text>
+                </View>
               ))}
             </View>
           ) : (
@@ -483,14 +496,28 @@ const styles = StyleSheet.create({
   artistList: {
     marginTop: 12,
   },
+  artistItemContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
   artistItem: {
     fontSize: 16,
     fontFamily: 'Inter',
     fontWeight: '500',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
     color: '#37474F',
+  },
+  artistBadge: {
+    fontSize: 12,
+    color: '#666',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   emptyText: {
     textAlign: 'center',

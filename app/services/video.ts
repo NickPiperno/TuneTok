@@ -8,6 +8,7 @@ import { Video, VideoError } from '../types/video';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Timestamp } from 'firebase/firestore';
+import { FirestoreTimestamp } from './videoMetadata';
 
 const { width, height } = Dimensions.get('window');
 
@@ -66,12 +67,16 @@ const getVideoUrl = async (storageId: string): Promise<string> => {
   }
 };
 
-export const fetchVideos = async (pageSize: number = 10): Promise<Video[] | VideoError> => {
+export const fetchVideos = async (
+  pageSize: number = 10,
+  lastVideoTimestamp?: FirestoreTimestamp
+): Promise<Video[] | VideoError> => {
   try {
     console.log('🎥 Video Service: Starting to fetch videos', {
       pageSize,
       userId: auth.currentUser?.uid,
-      isAuthenticated: !!auth.currentUser
+      isAuthenticated: !!auth.currentUser,
+      hasLastVideo: !!lastVideoTimestamp
     });
 
     if (!auth.currentUser) {
@@ -82,8 +87,8 @@ export const fetchVideos = async (pageSize: number = 10): Promise<Video[] | Vide
       };
     }
 
-    // Get video metadata first
-    const metadata = await fetchVideoMetadata(auth.currentUser.uid, pageSize);
+    // Get video metadata first with pagination
+    const metadata = await fetchVideoMetadata(auth.currentUser.uid, pageSize, lastVideoTimestamp);
     
     if ('code' in metadata) {
       console.error('❌ Video Service: Error fetching metadata:', metadata);
