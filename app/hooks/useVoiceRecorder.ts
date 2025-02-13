@@ -191,8 +191,16 @@ export function useVoiceRecorder() {
         throw new Error('No active recording found');
       }
 
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
+      let currentRecording = recording;
+      setRecording(null); // Clear the recording state immediately to prevent double-stops
+
+      if (currentRecording._isDoneRecording) {
+        console.log('Recording is already stopped, skipping stopAndUnloadAsync');
+      } else {
+        await currentRecording.stopAndUnloadAsync();
+      }
+
+      const uri = currentRecording.getURI();
       
       if (!uri) {
         throw new Error('Failed to get recording URI');
@@ -217,11 +225,10 @@ export function useVoiceRecorder() {
       } catch (error) {
         console.error('Error identifying song:', error);
         return { uri: destinationUri, error };
-      } finally {
-        setRecording(null);
       }
     } catch (error) {
       console.error('Error stopping recording:', error);
+      setRecording(null); // Ensure recording state is cleared even on error
       throw error;
     }
   };

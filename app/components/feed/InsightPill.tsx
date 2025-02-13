@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     maxWidth: 350,
   },
   collapsedContainer: {
-    height: 50,
+    height: 42,
   },
   expandedContainer: {
     height: 350,
@@ -169,18 +169,18 @@ const styles = StyleSheet.create({
   },
   collapsedText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     flex: 1,
   },
   loadingText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontStyle: 'italic',
     flex: 1,
   },
   insufficientText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     flex: 1,
   },
   icon: {

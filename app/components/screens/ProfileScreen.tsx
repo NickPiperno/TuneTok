@@ -149,19 +149,26 @@ export const ProfileScreen = () => {
         return;
       }
 
-      // Launch image picker
+      // Launch image picker with more specific options
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.5,
+        quality: 1,
+        base64: false,
+        exif: false,
+        presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
       });
 
+      console.log('Image picker result:', result);
+
       if (!result.canceled && result.assets[0].uri) {
+        console.log('Selected image URI:', result.assets[0].uri);
         await uploadAvatar(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      console.error('Image picker error:', error);
+      Alert.alert('Error', `Failed to pick image: ${error.message}`);
     }
   };
 
@@ -170,16 +177,31 @@ export const ProfileScreen = () => {
 
     try {
       setUploadingAvatar(true);
+      console.log('Starting avatar upload process...');
 
+      // Convert image URI to blob
+      console.log('Fetching image from URI:', uri);
       const response = await fetch(uri);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+      
+      console.log('Converting image to blob...');
       const blob = await response.blob();
+      console.log('Blob size:', blob.size);
 
+      // Upload to Firebase Storage
+      console.log('Initializing Firebase Storage...');
       const storage = getStorage();
       const avatarRef = ref(storage, `avatars/${user.uid}`);
+      console.log('Uploading blob to Firebase Storage...');
       await uploadBytes(avatarRef, blob);
 
+      console.log('Getting download URL...');
       const downloadURL = await getDownloadURL(avatarRef);
+      console.log('Download URL received:', downloadURL);
 
+      console.log('Updating Firestore document...');
       const userPrefsRef = doc(db, 'userPreferences', user.uid);
       await updateDoc(userPrefsRef, {
         avatarUrl: downloadURL,
@@ -193,7 +215,8 @@ export const ProfileScreen = () => {
 
       Alert.alert('Success', 'Avatar updated successfully');
     } catch (error) {
-      Alert.alert('Error', 'Failed to upload avatar. Please try again.');
+      console.error('Avatar upload error:', error);
+      Alert.alert('Error', `Failed to upload avatar: ${error.message}`);
     } finally {
       setUploadingAvatar(false);
     }
